@@ -91,56 +91,69 @@ def load_config_with_overrides(dataset: str) -> dict:
 def bootstrap_c_index(
     model,
     df_scaled: pd.DataFrame,
-    n_boot: int = 500,
+    n_boot: int = 300,
     seed: int = 42,
 ) -> tuple:
     """
     D2: Compute bootstrap 95% CI for the Weibull AFT C-index.
 
-    Resamples (with replacement) and computes concordance_index on each resample.
-    Does NOT refit the model — uses the fitted model's predict_median.
-
     Parameters
     ----------
     model : WeibullAFTFitter  (already fitted)
-    df_scaled : pd.DataFrame  (contains T, E and scaled feature columns)
-    n_boot : int  — number of bootstrap iterations (default 500)
+    df_scaled : pd.DataFrame  (OOS test set, contains T, E and scaled feature columns)
+    n_boot : int  — number of bootstrap iterations (default 300)
     seed : int    — reproducibility seed
 
     Returns
     -------
-    tuple : (lower_95, median, upper_95)
+    tuple : (lower_95, median, upper_95, reliability_flag)
     """
     from lifelines.utils import concordance_index
 
+    # ── Fit Quality Guard ────────────────────────────────────────────────────
+    rho = getattr(model, "rho_", 0)
+    if rho > 10:
+        logger.warning(f"[Bootstrap] Model hasn't converged (rho={rho:.2f} > 10). Skipping CI.")
+        return (np.nan, np.nan, np.nan, False)
+
     rng  = np.random.default_rng(seed)
-    T_all = df_scaled["T"].values
-    E_all = df_scaled["E"].values
-    feat_cols = [c for c in df_scaled.columns if c not in ("T", "E")]
+    # Ensure index is clean for iloc alignment
+    df_eval = df_scaled.reset_index(drop=True)
+    T_all = df_eval["T"].values
+    E_all = df_eval["E"].values
+    feat_cols = [c for c in df_eval.columns if c not in ("T", "E")]
     n = len(T_all)
 
     boot_scores = []
     for _ in range(n_boot):
-        idx  = rng.integers(0, n, size=n)
-        T_b  = T_all[idx]
-        E_b  = E_all[idx]
-        df_b = df_scaled.iloc[idx][feat_cols].copy()
+        idx = rng.integers(0, n, size=n)
+        T_b = T_all[idx]
+        E_b = E_all[idx]
+        # Robust copy with index reset for safe prediction
+        df_b = df_eval.iloc[idx][feat_cols].copy().reset_index(drop=True)
+        
         try:
-            T_hat = model.predict_median(df_b)
-            T_hat_vals = T_hat.values
-            # Filter out inf/-inf from predictions (Weibull may predict inf)
-            finite_mask = np.isfinite(T_hat_vals) & np.isfinite(T_b)
-            if finite_mask.sum() < 10:
-                continue  # too few valid predictions
-            c = concordance_index(T_b[finite_mask], T_hat_vals[finite_mask], E_b[finite_mask])
+            # score() is more robust than predict_median manually
+            # But during bootstrap, if it fails due to inf, we catch it.
+            c = model.score(df_b, scoring_method="concordance_index")
             if np.isfinite(c):
                 boot_scores.append(c)
         except Exception:
-            pass
+            # Fallback to manual if score fails
+            try:
+                T_hat = model.predict_median(df_b).values
+                finite = np.isfinite(T_hat)
+                if finite.sum() > n * 0.5:
+                    c = concordance_index(T_b[finite], T_hat[finite], E_b[finite])
+                    if np.isfinite(c):
+                        boot_scores.append(c)
+            except Exception:
+                pass
 
-    if not boot_scores:
-        logger.warning("[Bootstrap CI] All resamples failed.")
-        return (float("nan"), float("nan"), float("nan"))
+    n_valid = len(boot_scores)
+    if n_valid < 50:
+        logger.warning(f"[Bootstrap] Underpowered: only {n_valid}/{n_boot} valid samples. Results unreliable.")
+        return (np.nan, np.nan, np.nan, False)
 
     arr = np.array(boot_scores)
     lo, med, hi = (
@@ -150,9 +163,9 @@ def bootstrap_c_index(
     )
     logger.info(
         f"[Bootstrap CI] C-index 95%% CI: [{lo:.4f}, {hi:.4f}]  "
-        f"(median={med:.4f}, n_boot={n_boot}, n_valid={len(boot_scores)})"
+        f"(median={med:.4f}, n_valid={n_valid})"
     )
-    return lo, med, hi
+    return lo, med, hi, True
 
 
 # =============================================================================
@@ -166,38 +179,31 @@ def compute_c_index(
 ) -> float:
     """
     Compute Harrell's Concordance Index (C-index).
-
-    Uses the model's built-in concordance_index_ attribute (computed during
-    fitting) to avoid numerical overflow issues with predict_median on
-    extreme feature values.
-
-    C-index measures the probability that, for a randomly selected pair of
-    customers where one churned before the other, the model correctly ranks
-    the earlier churner as higher risk.
-
-    Parameters
-    ----------
-    model : WeibullAFTFitter or CoxPHFitter
-        Fitted survival model.
-    df_scaled : pd.DataFrame
-        Scaled feature DataFrame with T and E columns.
-    model_name : str
-        Label for logging.
-
-    Returns
-    -------
-    float
-        C-index in [0, 1]. 0.5 = random, 1.0 = perfect.
     """
-    # Use the built-in concordance_index_ attribute computed during fitting.
-    # This avoids numerical overflow in predict_median for extreme feature values.
-    if hasattr(model, "concordance_index_"):
-        c = model.concordance_index_
-    else:
-        # Fallback: use score() method
-        c = model.score(df_scaled, scoring_method="concordance_index")
+    # ── Fit Quality Guard ────────────────────────────────────────────────────
+    rho = getattr(model, "rho_", 1.0)
+    if rho > 10:
+        logger.warning(f"[{model_name}] EXTREME RHO ({rho:.2f} > 10). Model non-convergent or overfit.")
+        return getattr(model, "concordance_index_", np.nan)
 
-    logger.info(f"[{model_name}] C-index: {c:.4f}")
+    # Log model summary for academic audit
+    try:
+        logger.info(f"[{model_name}] Parameters:\n{model.params_}")
+    except:
+        pass
+
+    try:
+        # Step 1: Attempt standard predictive score (Out-of-sample)
+        # We reset index to ensure no alignment issues during predict inside score()
+        c = model.score(df_scaled.reset_index(drop=True), scoring_method="concordance_index")
+    except Exception as e:
+        logger.warning(f"[{model_name}] OOS scoring failed ({e}). Falling back to train attribute.")
+        c = getattr(model, "concordance_index_", np.nan)
+
+    if not np.isfinite(c):
+        c = getattr(model, "concordance_index_", np.nan)
+
+    logger.info(f"[{model_name}] Final C-index: {c:.4f}")
     return c
 
 
@@ -265,19 +271,39 @@ def compute_integrated_brier_score(
                 "[IBS] scikit-survival not installed — using non-IPCW Brier Score (fallback). "
                 "Install for publication-grade results: pip install scikit-survival"
             )
-        except Exception as exc:
-            logger.warning(f"[IBS] sksurv IPCW failed ({exc}). Using non-IPCW fallback.")
-
-    # ── Tier 2: Fallback — plain non-IPCW Brier Score ────────────────────────
-    S_hat = model.predict_survival_function(df_scaled, times=t_grid).values  # (T, N)
+    # ── Tier 2: Non-IPCW Naive IBS (naive backup) ───────────────────────────
     brier_scores = []
+    S_hat = model.predict_survival_function(df_scaled, times=t_grid).values # (T, N)
     for j, t in enumerate(t_grid):
         y_true = (T_obs > t).astype(float)
-        brier_scores.append(np.mean((S_hat[j, :] - y_true) ** 2))
+        y_pred = S_hat[j, :]
+        brier_scores.append(np.mean((y_pred - y_true) ** 2))
 
     ibs = trapezoid(np.array(brier_scores), t_grid) / (t_hi - t_lo)
-    logger.info(f"[WeibullAFT] IBS (non-IPCW fallback): {ibs:.4f}")
+    logger.info(f"[WeibullAFT] IBS (non-IPCW fallback, biased): {ibs:.4f}")
     return ibs
+
+
+def generate_sensitivity_report(
+    results_list: list,
+    save_path: str = None,
+) -> pd.DataFrame:
+    """
+    Aggregate metrics from multiple runs (different tau/datasets) into a report.
+    """
+    if not results_list:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(results_list)
+    # Ensure standard column order
+    cols = ["dataset", "tau", "n_customers", "churn_rate", "c_index_oos", "ibs", "efficiency_gain_pct"]
+    df = df[[c for c in cols if c in df.columns]]
+
+    if save_path:
+        df.to_markdown(save_path, index=False)
+        logger.info(f"[Sensitivity] report saved → {save_path}")
+
+    return df
 
 
 

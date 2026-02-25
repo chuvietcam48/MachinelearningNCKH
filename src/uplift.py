@@ -10,18 +10,23 @@ treatment and control groups.  The UCI Online Retail dataset contains no such
 experiment, so this module implements a *proxy* approach that is scientifically
 sound and common in academic literature:
 
-  1. **Propensity Score Matching (PSM) proxy**
+  1. **IPTW-Corrected T-Learner**
      The Weibull intervention signal (EVI > 0 AND h > theta_h) acts as the
-     "treatment assignment" proxy.  We use the SURVIVAL PROBABILITY S(t) as
-     the propensity score to match treated (INTERVENE) vs control (WAIT) groups
-     on pre-treatment observable characteristics.
+     "treatment assignment" proxy.  To mitigate *selection bias* inherent in
+     observational treatment assignment, we:
+       a) Estimate propensity scores e(X) = P(T=1 | X) via Logistic Regression.
+       b) Compute Inverse Probability of Treatment Weights (IPTW):
+            w_i = 1/e(X_i)     if treated (T=1)
+            w_i = 1/(1-e(X_i)) if control  (T=0)
+       c) Pass IPTW weights as sample_weight into each T-Learner branch.
+     This reweights each sample to emulate a balanced pseudo-population,
+     producing a debiased estimate of the Average Treatment Effect (ATE).
+     See: Rosenbaum & Rubin (1983), Hirano & Imbens (2001).
 
-  2. **Synthetic Response Uplift Estimation**
-     Given the matching, we estimate the Conditional Average Treatment Effect
-     (CATE) on Monetary value using a simple T-Learner (two-model) approach:
+  2. **T-Learner CATE Estimation (tau_hat)**
+     Given IPTW-corrected training, we estimate per-customer CATE:
        tau_hat(x) = mu_1(x) - mu_0(x)
-     where mu_1, mu_0 are Random Forest regressors fitted on "treated" and
-     "control" matched samples respectively.
+     where mu_1, mu_0 are GradientBoosting regressors on treated/control sets.
 
   3. **Persuadables Segmentation**
      Following Radcliffe & Surry (1999), customers are split into 4 quadrants:
@@ -100,20 +105,100 @@ def _build_feature_matrix(
 
 
 # =============================================================================
-# 2. T-Learner CATE Estimation
+# 2. IPTW-Corrected T-Learner CATE Estimation
 # =============================================================================
+
+def _estimate_propensity_scores(
+    X: np.ndarray,
+    treatment: np.ndarray,
+) -> np.ndarray:
+    """
+    Estimate propensity scores e(X) = P(T=1 | X) via Logistic Regression.
+
+    Propensity scores are clipped to [0.01, 0.99] to prevent extreme weights
+    (positivity assumption enforcement).
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (n, p)
+        Covariate matrix (already imputed and scaled).
+    treatment : np.ndarray, shape (n,)
+        Binary treatment indicator (1=INTERVENE, 0=WAIT).
+
+    Returns
+    -------
+    np.ndarray, shape (n,)
+        Clipped propensity scores in [0.01, 0.99].
+    """
+    from sklearn.linear_model import LogisticRegression
+
+    ps_model = LogisticRegression(
+        max_iter=1000, penalty="l2", C=1.0, solver="lbfgs", random_state=42
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ps_model.fit(X, treatment)
+    propensity = ps_model.predict_proba(X)[:, 1]          # P(T=1 | X)
+    propensity = np.clip(propensity, 0.01, 0.99)          # positivity
+    logger.info(
+        "[Uplift][IPTW] Propensity scores — min=%.4f | mean=%.4f | max=%.4f",
+        propensity.min(), propensity.mean(), propensity.max(),
+    )
+    return propensity
+
+
+def _compute_iptw_weights(
+    propensity: np.ndarray,
+    treatment: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute Inverse Probability of Treatment Weights (IPTW).
+
+    Stabilised IPTW formula:
+      treated  : w = P(T=1) / e(X)
+      control  : w = P(T=0) / (1 - e(X))
+
+    Stabilisation by mean treatment probability reduces variance of weights.
+    Weights are clipped at 99th-percentile to limit extreme influence.
+    """
+    p_t = treatment.mean()                                # marginal P(T=1)
+    p_c = 1.0 - p_t                                      # marginal P(T=0)
+
+    weights = np.where(
+        treatment == 1,
+        p_t / propensity,          # stabilised treated weight
+        p_c / (1.0 - propensity),  # stabilised control weight
+    )
+    # Winsorise at 99th percentile to remove extreme leverage
+    clip_val = np.percentile(weights, 99)
+    weights  = np.clip(weights, 0.0, clip_val)
+
+    eff_n = (weights.sum() ** 2) / (weights ** 2).sum()  # effective sample size
+    logger.info(
+        "[Uplift][IPTW] Weights — mean=%.4f | max(clipped)=%.4f | "
+        "effective N=%.0f (raw N=%d)",
+        weights.mean(), weights.max(), eff_n, len(weights),
+    )
+    return weights
+
 
 def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     """
-    Fit a T-Learner (two-model approach) to estimate uplift tau_hat(x).
+    Fit an IPTW-corrected T-Learner to estimate causal uplift tau_hat(x).
 
-    tau_hat(x) = mu_1(x) - mu_0(x)
-    mu_1 fitted on treated (INTERVENE) group
-    mu_0 fitted on control (WAIT) group
+    Step 1 — Propensity Estimation:
+      Logistic Regression → e(X) = P(T=1|X), clipped to [0.01, 0.99]
 
-    Both models predict `Monetary` as the outcome proxy — the expected revenue
-    contribution of each customer.  The uplift is the *incremental* Monetary
-    value attributable to the intervention.
+    Step 2 — IPTW Computation:
+      w_i = P(T=1)/e(X_i) for treated | w_i = P(T=0)/(1-e(X_i)) for control
+      Stabilised + winsorised at 99th percentile.
+
+    Step 3 — Weighted T-Learner:
+      mu_1 fitted on treated subset   with sample_weight=w[treated]
+      mu_0 fitted on control subset   with sample_weight=w[control]
+
+    Step 4 — CATE:
+      tau_hat(x) = mu_1(x) - mu_0(x)   (evaluated on ALL customers)
     """
     try:
         from sklearn.ensemble import GradientBoostingRegressor
@@ -123,10 +208,19 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     except ImportError:
         raise ImportError("scikit-learn is required for uplift modeling.")
 
-    X = df[feature_cols].values
-    y = df["Monetary"].values
+    treatment = df["treatment"].values.astype(int)
+    y         = df["Monetary"].values.astype(float)
 
-    treated_mask = df["treatment"].values == 1
+    # ------------------------------------------------------------------
+    # Pre-process X for propensity model (impute + scale)
+    # ------------------------------------------------------------------
+    imputer = SimpleImputer(strategy="median")
+    scaler  = StandardScaler()
+    X_raw   = df[feature_cols].values
+    X_imp   = imputer.fit_transform(X_raw)
+    X_sc    = scaler.fit_transform(X_imp)
+
+    treated_mask = treatment == 1
     control_mask = ~treated_mask
 
     if treated_mask.sum() < 10:
@@ -136,29 +230,47 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
             treated_mask.sum(),
         )
 
-    def _make_pipeline():
-        return Pipeline([
-            ("impute", SimpleImputer(strategy="median")),
-            ("scale",  StandardScaler()),
-            ("model",  GradientBoostingRegressor(
-                n_estimators=100, max_depth=3, learning_rate=0.05,
-                subsample=0.8, random_state=42,
-            )),
-        ])
+    # ------------------------------------------------------------------
+    # STEP 1+2 : Propensity scores → IPTW weights
+    # ------------------------------------------------------------------
+    propensity   = _estimate_propensity_scores(X_sc, treatment)
+    iptw_weights = _compute_iptw_weights(propensity, treatment)
 
-    mu_1_pipe = _make_pipeline()
-    mu_0_pipe = _make_pipeline()
+    # ------------------------------------------------------------------
+    # STEP 3 : Weighted T-Learner  (GradientBoosting, raw X to avoid
+    #           double-scaling inside the pipeline)
+    # ------------------------------------------------------------------
+    def _make_gbr():
+        return GradientBoostingRegressor(
+            n_estimators=100, max_depth=3, learning_rate=0.05,
+            subsample=0.8, random_state=42,
+        )
+
+    mu_1_model = _make_gbr()
+    mu_0_model = _make_gbr()
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        mu_1_pipe.fit(X[treated_mask], y[treated_mask])
-        mu_0_pipe.fit(X[control_mask], y[control_mask])
+        # Pass IPTW weights as sample_weight to debias each branch
+        mu_1_model.fit(
+            X_sc[treated_mask], y[treated_mask],
+            sample_weight=iptw_weights[treated_mask],
+        )
+        mu_0_model.fit(
+            X_sc[control_mask], y[control_mask],
+            sample_weight=iptw_weights[control_mask],
+        )
 
-    tau_hat = mu_1_pipe.predict(X) - mu_0_pipe.predict(X)
+    # ------------------------------------------------------------------
+    # STEP 4 : Predict on full population
+    # ------------------------------------------------------------------
+    tau_hat = mu_1_model.predict(X_sc) - mu_0_model.predict(X_sc)
     df = df.copy()
-    df["tau_hat"] = tau_hat
-    df["mu_1"]    = mu_1_pipe.predict(X)   # predicted response IF treated
-    df["mu_0"]    = mu_0_pipe.predict(X)   # predicted response IF not treated
+    df["tau_hat"]    = tau_hat
+    df["mu_1"]       = mu_1_model.predict(X_sc)  # predicted outcome IF treated
+    df["mu_0"]       = mu_0_model.predict(X_sc)  # predicted outcome IF control
+    df["propensity"] = propensity                # for diagnostics
+    df["iptw"]       = iptw_weights              # for diagnostics
     return df
 
 

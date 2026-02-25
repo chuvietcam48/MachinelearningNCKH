@@ -54,6 +54,7 @@ DEFAULT_HAZARD_THRESHOLD = _policy_cfg.get("hazard_threshold",   0.01)
 DEFAULT_SURVIVAL_FLOOR   = _policy_cfg.get("survival_floor",     0.05)
 DEFAULT_RESPONSE_RATE    = _policy_cfg.get("response_rate",      0.15)
 DEFAULT_COST_PER_CONTACT = _policy_cfg.get("cost_per_contact",   1.0)
+DEFAULT_MIN_EVI_THRESHOLD = _policy_cfg.get("min_evi_threshold", 0.0)
 
 
 def _compute_hazard_from_survival(
@@ -95,6 +96,7 @@ def compute_intervention_signals(
     customer_df: pd.DataFrame,
     t_now: float = None,
     t_grid_steps: int = 200,
+    predicted_clv: pd.Series = None,
 ) -> pd.DataFrame:
     """
     Compute hazard, survival, and EVI signals for all customers.
@@ -111,12 +113,16 @@ def compute_intervention_signals(
         Current time point in days. Defaults to median T in dataset.
     t_grid_steps : int
         Number of time steps for survival function evaluation (default: 200).
+    predicted_clv : pd.Series, optional
+        Predicted future CLV per customer (indexed by CustomerID).
+        When provided, replaces historical Monetary in the EVI CLV term.
+        Falls back to ``customer_df["Monetary"]`` when None.
 
     Returns
     -------
     pd.DataFrame
         Per-customer signals with columns:
-        [hazard_now, survival_now, evi, optimal_window_days]
+        [hazard_now, survival_now, evi, optimal_window_days, clv_used]
     """
     t_max = df_scaled["T"].max()
     t_grid = np.linspace(1, t_max, t_grid_steps)
@@ -148,15 +154,28 @@ def compute_intervention_signals(
         if row_label in hazard_fn.index else np.nan
     )
 
+    # ── CLV for EVI calculation ───────────────────────────────────────────────
+    # Prefer forward-looking predicted_clv when available (anti-leakage design).
+    # Fall back to historical Monetary if no CLV model has been trained.
+    if predicted_clv is not None:
+        # Align by index (CustomerID); fill missing with 0
+        clv_values = predicted_clv.reindex(df_scaled.index).fillna(0.0).values
+        clv_source = "predicted_clv"
+    else:
+        clv_values = customer_df["Monetary"].values
+        clv_source = "historical_Monetary"
+
     # ── Assemble signals DataFrame ────────────────────────────────────────────
     signals = pd.DataFrame({
         "hazard_now":          hazard_now.values,
         "survival_now":        survival_now.values,
         "optimal_window_days": t_grid[hazard_fn.values.argmax(axis=0)],
+        "clv_used":            clv_values,
     }, index=df_scaled.index)
 
-    # ── Merge Monetary from original customer_df ──────────────────────────────
+    # Keep historical Monetary for reference / dashboard artifact
     signals["Monetary"] = customer_df["Monetary"].values
+    logger.info(f"[Policy] EVI CLV source: {clv_source}")
 
     return signals
 
@@ -171,60 +190,43 @@ def make_intervention_decisions(
     p_response: float = DEFAULT_RESPONSE_RATE,
     cost_per_contact: float = DEFAULT_COST_PER_CONTACT,
     vip_pct: float = None,  # E6: override VIP guard percentile (1.0 = disable)
+    predicted_clv: pd.Series = None,
+    min_evi_threshold: float = DEFAULT_MIN_EVI_THRESHOLD,
 ) -> pd.DataFrame:
     """
     Apply the full decision policy to all customers.
 
     Decision Rule:
-      IF h(t_now) > θ_h  AND  EVI > 0  → INTERVENE
-      ELIF S(t_now) < θ_s               → LOST
-      ELSE                               → WAIT
-
-    Parameters
-    ----------
-    waf : WeibullAFTFitter
-        Fitted Weibull AFT model.
-    df_scaled : pd.DataFrame
-        Scaled feature DataFrame with T and E columns.
-    customer_df : pd.DataFrame
-        Original customer DataFrame (for Monetary values).
-    t_now : float, optional
-        Current time in days (defaults to median T).
-    theta_h : float
-        Hazard threshold for intervention trigger.
-    theta_s : float
-        Survival floor below which customer is considered lost.
-    p_response : float
-        Expected campaign response rate.
-    cost_per_contact : float
-        Cost per marketing contact (GBP).
-
-    Returns
-    -------
-    pd.DataFrame
-        Decision table with columns:
-        [CustomerID, hazard_now, survival_now, evi, decision, optimal_window_days]
+      IF h(t_now) > θ_h  AND  EVI > min_evi  → INTERVENE
+      ELIF S(t_now) < θ_s                    → LOST
+      ELSE                                   → WAIT
     """
+    clv_label = "predictive" if predicted_clv is not None else "historical Monetary"
     logger.info(
         f"Running intervention policy | θ_h={theta_h} | θ_s={theta_s} | "
-        f"p_response={p_response} | cost_per_contact=£{cost_per_contact:.2f}"
+        f"p_response={p_response} | cost_per_contact={cost_per_contact:.2f} MU | "
+        f"min_evi={min_evi_threshold:.2f} | CLV source={clv_label}"
     )
 
-    signals = compute_intervention_signals(waf, df_scaled, customer_df, t_now)
+    signals = compute_intervention_signals(
+        waf, df_scaled, customer_df, t_now,
+        predicted_clv=predicted_clv,
+    )
 
     # ── Expected Value of Intervention ────────────────────────────────────────
-    # EVI(t*, i) = p_response * Monetary_i * [1 - S(t* | x_i)] - C_contact
+    # EVI(t*, i) = p_response * CLV_i * [1 - S(t* | x_i)] - C_contact
+    # CLV_i is predicted_clv when available, else historical Monetary
     signals["evi"] = (
-        p_response * signals["Monetary"] * (1 - signals["survival_now"])
+        p_response * signals["clv_used"] * (1 - signals["survival_now"])
         - cost_per_contact
     )
 
     # ── Apply decision rule (vectorized) ─────────────────────────────────────
     # LOST   : S(t_now) < theta_s
-    # INTERVENE : h(t_now) > theta_h AND EVI > 0
+    # INTERVENE : h(t_now) > theta_h AND EVI > min_evi_threshold
     # WAIT   : everything else
     is_lost      = signals["survival_now"] < theta_s
-    is_intervene = (~is_lost) & (signals["hazard_now"] > theta_h) & (signals["evi"] > 0)
+    is_intervene = (~is_lost) & (signals["hazard_now"] > theta_h) & (signals["evi"] > min_evi_threshold)
 
     # E4: VIP Sleeping Dog Guard — prevent spamming high-value happy customers.
     # If a customer has very high Monetary (top percentile) but very LOW hazard,
@@ -254,6 +256,14 @@ def make_intervention_decisions(
     signals.index.name = "CustomerID"
     signals = signals.reset_index()
 
+    # Expose predicted_clv as its own column (or copy Monetary if no CLV model)
+    if predicted_clv is not None:
+        signals["predicted_clv"] = predicted_clv.reindex(
+            signals["CustomerID"]
+        ).values
+    else:
+        signals["predicted_clv"] = signals["Monetary"]
+
     # ── Log decision distribution ─────────────────────────────────────────────
     dist = signals["decision"].value_counts()
     logger.info(f"Decision distribution:\n{dist.to_string()}")
@@ -265,7 +275,7 @@ def make_intervention_decisions(
 
     return signals[
         ["CustomerID", "hazard_now", "survival_now", "evi", "decision",
-         "optimal_window_days", "Monetary"]
+         "optimal_window_days", "Monetary", "predicted_clv"]
     ].rename(columns={"survival_now": "survival"})
 
 
@@ -299,3 +309,103 @@ def rfm_intervention_decisions(rfm_df: pd.DataFrame) -> pd.DataFrame:
     df = rfm_df.copy().reset_index()
     df["decision"] = df["RFM_Segment"].map(segment_to_decision)
     return df[["CustomerID", "RFM_Segment", "decision"]]
+
+
+def lr_intervention_decisions(
+    lr_pipeline,
+    customer_df: pd.DataFrame,
+    uplift_scores: pd.Series,
+    predicted_clv: pd.Series = None,
+    p_response: float = DEFAULT_RESPONSE_RATE,
+    cost_per_contact: float = DEFAULT_COST_PER_CONTACT,
+    churn_prob_threshold: float = 0.5,
+) -> pd.DataFrame:
+    """
+    Generate intervention decisions from the Logistic Regression baseline model
+    combined with EVI, creating an apples-to-apples comparison with Weibull EVI.
+
+    EVI Formula (mirrors Weibull policy for fair comparison):
+      lr_evi = uplift_scores * predicted_clv - cost_per_contact
+
+    Decision Rule:
+      INTERVENE if lr_churn_prob > churn_prob_threshold AND lr_evi > 0
+      WAIT      otherwise
+
+    Parameters
+    ----------
+    lr_pipeline : sklearn Pipeline
+        Fitted LR pipeline (imputer -> scaler -> LogisticRegression).
+    customer_df : pd.DataFrame
+        Customer-level DataFrame indexed by CustomerID.
+        Must contain LOGISTIC_FEATURES columns (Frequency, Monetary,
+        InterPurchaseTime, GapDeviation, SinglePurchase).
+    uplift_scores : pd.Series
+        Per-customer uplift scores (tau_hat) from the T-Learner, indexed by
+        CustomerID.  Used as the ``p_response``-equivalent weight in EVI.
+        If uplift is not available, pass a constant Series (e.g. all=p_response).
+    predicted_clv : pd.Series, optional
+        Forward-looking CLV per customer (indexed by CustomerID).
+        Falls back to customer_df["Monetary"] when None.
+    p_response : float
+        Campaign response rate — used when uplift_scores is constant.
+    cost_per_contact : float
+        Cost per marketing contact (MU).
+    churn_prob_threshold : float
+        Minimum LR churn probability to qualify for intervention (default: 0.5).
+
+    Returns
+    -------
+    pd.DataFrame
+        Decision table with columns:
+        [CustomerID, lr_churn_prob, lr_evi, decision, predicted_clv]
+    """
+    from src.models import LOGISTIC_FEATURES  # avoid circular at module level
+
+    logger.info(
+        f"[LR Policy] Running LR+EVI intervention policy | "
+        f"threshold={churn_prob_threshold} | cost={cost_per_contact:.2f} MU"
+    )
+
+    # ── Features (same as train_logistic — no Recency) ────────────────────────
+    available_lr_feats = [f for f in LOGISTIC_FEATURES if f in customer_df.columns]
+    X = customer_df[available_lr_feats].values
+
+    # ── LR churn probability ───────────────────────────────────────────────────
+    lr_churn_prob = lr_pipeline.predict_proba(X)[:, 1]  # P(E=1 | x)
+
+    # ── CLV for EVI ───────────────────────────────────────────────────────────
+    if predicted_clv is not None:
+        clv_values = predicted_clv.reindex(customer_df.index).fillna(0.0).values
+        clv_label  = "predicted_clv"
+    else:
+        clv_values = customer_df["Monetary"].values
+        clv_label  = "historical_Monetary"
+    logger.info(f"[LR Policy] CLV source: {clv_label}")
+
+    # ── Uplift scores (T-Learner tau_hat) aligned to customer_df index ────────
+    uplift_vals = uplift_scores.reindex(customer_df.index).fillna(p_response).values
+
+    # ── EVI: uplift * CLV - cost (same formula as Weibull for fair comparison) ─
+    lr_evi = uplift_vals * clv_values - cost_per_contact
+
+    # ── Decision rule ─────────────────────────────────────────────────────────
+    is_intervene = (lr_churn_prob > churn_prob_threshold) & (lr_evi > 0)
+    decision = np.where(is_intervene, "INTERVENE", "WAIT")
+
+    result = pd.DataFrame({
+        "CustomerID":    customer_df.index,
+        "lr_churn_prob": lr_churn_prob,
+        "lr_evi":        lr_evi,
+        "decision":      decision,
+        "predicted_clv": clv_values,
+    })
+
+    n_intervene = is_intervene.sum()
+    n_total     = len(result)
+    logger.info(
+        f"[LR Policy] Decisions — INTERVENE: {n_intervene:,} ({n_intervene/n_total*100:.1f}%) | "
+        f"WAIT: {n_total - n_intervene:,} ({(n_total - n_intervene)/n_total*100:.1f}%)"
+    )
+
+    return result
+

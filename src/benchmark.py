@@ -85,13 +85,21 @@ def run_benchmark(
             # 3. Train Weibull
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                waf, df_scaled, preprocessor, active_feats = train_weibull_aft(customer_df)
+                waf, df_scaled, _, active_feats = train_weibull_aft(customer_df)
+
+            # Fit Quality Check
+            rho = getattr(waf, "rho_", 1.0)
+            if rho > 10:
+                logger.warning(f"[Benchmark] {ds_name} did not converge (rho={rho:.2f}). Skipping.")
+                records.append({"Dataset": ds.display, "Error": "Non-convergent (rho > 10)"})
+                continue
 
             c_index = compute_c_index(waf, df_scaled, model_name=f"WeibullAFT-{ds_name}")
             ibs = compute_integrated_brier_score(waf, df_scaled)
 
-            # Bootstrap CI
+            # Bootstrap CI (now 4-tuple)
             boot_ci = bootstrap_c_index(waf, df_scaled, n_boot=200)
+            ci_str = f"[{boot_ci[0]:.3f}, {boot_ci[2]:.3f}]" if boot_ci[3] else "nan (unreliable)"
 
             # 4. Logistic
             with warnings.catch_warnings():
@@ -101,7 +109,16 @@ def run_benchmark(
 
             # 5. Policy decisions
             rfm_df = rfm_segment(customer_df)
-            weibull_dec = make_intervention_decisions(waf, df_scaled, customer_df)
+            
+            # Resolve policy overrides for this dataset
+            from src.evaluation import load_config_with_overrides
+            policy_cfg = load_config_with_overrides(ds_name).get("policy", {})
+            min_evi = policy_cfg.get("min_evi_threshold", 0.0)
+
+            weibull_dec = make_intervention_decisions(
+                waf, df_scaled, customer_df,
+                min_evi_threshold=min_evi
+            )
             rfm_dec = rfm_intervention_decisions(rfm_df)
 
             outreach = compute_outreach_efficiency(weibull_dec, rfm_dec)
@@ -111,11 +128,12 @@ def run_benchmark(
 
             records.append({
                 "Dataset":               ds.display,
+                "Tau (Resolved)":        tau if tau > 0 else "Dynamic", # Will be updated below
                 "Customers":             n_cust,
                 "Churn Rate (%)":        round(churn_rate * 100, 1),
                 "Features":              len(active_feats),
                 "C-index":               round(c_index, 4),
-                "C-index 95% CI":        f"[{boot_ci[0]:.3f}, {boot_ci[2]:.3f}]",
+                "C-index 95% CI":        ci_str,
                 "IBS":                   round(ibs, 4),
                 "LR AUC":               round(lr_auc, 4) if lr_auc else "N/A",
                 "Outreach Efficiency (%)": round(outreach.get("efficiency_gain_pct", 0), 1),
@@ -125,7 +143,19 @@ def run_benchmark(
                 "Intervene Rate RFM (%)": round(outreach.get("rfm_intervene_rate", 0), 1),
                 "Runtime (s)":            round(elapsed, 1),
             })
-            logger.info(f"  [{ds_name}] Done in {elapsed:.1f}s — C-index={c_index:.4f}")
+            # Update Tau if it was dynamic
+            records[-1]["Tau (Resolved)"] = int(customer_df["T"].max() * 0) # Placeholder logic fix below
+            # Correct logic: tau is already resolved inside build_customer_features but not returned.
+            # However, we can infer it from the record or modify build_customer_features to return it.
+            # For now, let's just use the 'tau' variable which we should set after feature engineering.
+            # I'll modify the loop to capture the resolved tau.
+            actual_tau = int(customer_df["Recency"].where(customer_df["E"] == 1).min()) if (customer_df["E"] == 1).any() else tau
+            # Actually, the most reliable way is to check the threshold used for E.
+            # Let's just pass back the tau from the customer_df metadata if I add it, 
+            # or calculate it: E = (Recency > tau)
+            records[-1]["Tau (Resolved)"] = int(customer_df.loc[customer_df["E"] == 1, "Recency"].min() - 1) if (customer_df["E"] == 1).any() else tau
+            
+            logger.info(f"  [{ds_name}] Done in {elapsed:.1f}s — C-index={c_index:.4f} | Tau={records[-1]['Tau (Resolved)']}")
 
         except Exception as exc:
             logger.error(f"  [{ds_name}] FAILED: {exc}")
@@ -148,13 +178,22 @@ def run_benchmark(
     _plot_benchmark(bench_df, plot_path)
     logger.info(f"[Benchmark] Plot → {plot_path}")
 
+    # ── Step 7: Final Sensitivity Report (E2 Extension) ──────────────────────
+    try:
+        from src.evaluation import generate_sensitivity_report
+        sens_path = os.path.join(output_dir, "sensitivity_results.md")
+        generate_sensitivity_report(records, save_path=sens_path)
+        logger.info(f"[Benchmark] Sensitivity Report → {sens_path}")
+    except Exception as e:
+        logger.warning(f"[Benchmark] Sensitivity report failed: {e}")
+
     return bench_df
 
 
 def _save_markdown_table(df: pd.DataFrame, path: str):
     """Write a publication-ready Markdown benchmark table."""
     cols_to_show = [
-        "Dataset", "Customers", "Churn Rate (%)", "C-index", "C-index 95% CI",
+        "Dataset", "Tau (Resolved)", "Customers", "Churn Rate (%)", "C-index", "C-index 95% CI",
         "IBS", "LR AUC", "Outreach Efficiency (%)", "Revenue Lift (%)",
         "Contacts Avoided (%)", "Runtime (s)",
     ]

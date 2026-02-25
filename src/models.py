@@ -31,6 +31,7 @@ import logging
 import warnings
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
@@ -541,6 +542,127 @@ def train_logistic(
     lr = pipeline.named_steps["lr"]
 
     return lr, pipeline, cv_metrics
+
+
+# =============================================================================
+# 5.  CLV Regressor (Predictive Customer Lifetime Value)
+# =============================================================================
+
+# Features for CLV regression — mirrors LOGISTIC_FEATURES (no Recency to avoid
+# leakage, since E = Recency > tau defines the churn label).
+CLV_FEATURES = LOGISTIC_FEATURES  # ["Frequency", "Monetary", "InterPurchaseTime", "GapDeviation", "SinglePurchase"]
+
+
+def train_clv_regressor(
+    X_train: pd.DataFrame,
+    y_train_spend: pd.Series,
+    n_estimators: int = 100,
+    max_depth: int = 5,
+    random_state: int = 42,
+) -> tuple:
+    """
+    Train a lightweight RandomForestRegressor to predict future customer spend.
+
+    Leakage-free design
+    -------------------
+    The function receives pre-split **training-only** data.  The caller is
+    responsible for computing predictions on the test / full set using
+    ``rf_clv_pipeline.predict(X_test)`` — this function never touches test data.
+
+    Target
+    ------
+    ``y_train_spend`` is the actual total spend per customer in the tau-day
+    look-forward window (i.e. ``customer_df["future_spend"]`` on the train split).
+    This column is computed by ``build_customer_features(..., df_raw=df_clean)``
+    in feature_engine.py.
+
+    Features
+    --------
+    Same as LOGISTIC_FEATURES (Frequency, Monetary, InterPurchaseTime,
+    GapDeviation, SinglePurchase) — Recency is excluded to prevent leakage
+    because the churn label E is derived from Recency.
+
+    Parameters
+    ----------
+    X_train : pd.DataFrame
+        Training customer feature DataFrame indexed by CustomerID.
+        Must contain all columns in CLV_FEATURES.
+    y_train_spend : pd.Series
+        Target: actual future spend per customer in the prediction window,
+        indexed identically to X_train.  Zero for customers with no future
+        transactions.
+    n_estimators : int
+        Number of trees in the forest (default: 100).
+    max_depth : int
+        Maximum tree depth (default: 5) — limits overfitting on sparse CLV
+        distributions.
+    random_state : int
+        Random seed for reproducibility (default: 42).
+
+    Returns
+    -------
+    rf_clv_pipeline : sklearn Pipeline
+        Fitted impute -> scale -> RandomForestRegressor pipeline.
+        Call ``.predict(X)`` on any feature matrix to get predicted CLV.
+    predicted_clv_train : pd.Series
+        In-sample CLV predictions on X_train, indexed by CustomerID.
+        Useful for diagnostics; do NOT use for out-of-sample evaluation.
+    """
+    logger.info(
+        f"[CLV] Training CLV RandomForestRegressor | "
+        f"n_est={n_estimators} | max_depth={max_depth} | "
+        f"n_train={len(X_train):,}"
+    )
+
+    # ── Use available CLV features from the DataFrame ─────────────────────────
+    available_clv_feats = [f for f in CLV_FEATURES if f in X_train.columns]
+    if not available_clv_feats:
+        raise ValueError(
+            f"[CLV] None of CLV_FEATURES {CLV_FEATURES} found in X_train.columns "
+            f"({list(X_train.columns)}). Cannot train CLV regressor."
+        )
+
+    X = X_train[available_clv_feats].values
+    y = y_train_spend.values.astype(float)
+
+    rf_clv_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler",  StandardScaler()),
+        ("rf",      RandomForestRegressor(
+            n_estimators=n_estimators,
+            max_depth=max_depth,
+            random_state=random_state,
+            n_jobs=-1,
+        )),
+    ])
+    rf_clv_pipeline.fit(X, y)
+
+    # ── In-sample predictions (diagnostic only) ───────────────────────────────
+    y_pred_train = rf_clv_pipeline.predict(X)
+    predicted_clv_train = pd.Series(y_pred_train, index=X_train.index, name="predicted_clv")
+
+    # ── Log diagnostics ───────────────────────────────────────────────────────
+    rf_model = rf_clv_pipeline.named_steps["rf"]
+    feat_imp  = dict(zip(available_clv_feats, rf_model.feature_importances_))
+    top_feat  = max(feat_imp, key=feat_imp.get)
+
+    logger.info(
+        f"[CLV] Training complete | "
+        f"mean predicted CLV={predicted_clv_train.mean():.2f} | "
+        f"mean actual spend={y.mean():.2f} | "
+        f"top feature='{top_feat}' ({feat_imp[top_feat]:.3f})"
+    )
+    logger.info(
+        f"[CLV] Feature importances: "
+        + " | ".join(f"{k}={v:.3f}" for k, v in sorted(feat_imp.items(), key=lambda x: -x[1]))
+    )
+
+    # Pearson correlation between prediction and target (in-sample diagnostic)
+    if len(y) > 2:
+        corr = float(np.corrcoef(y, y_pred_train)[0, 1])
+        logger.info(f"[CLV] In-sample correlation (predicted vs actual): r={corr:.4f}")
+
+    return rf_clv_pipeline, predicted_clv_train
 
 
 # =============================================================================

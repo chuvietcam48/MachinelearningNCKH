@@ -109,9 +109,13 @@ def plot_weibull_survival_curves(
 
     # ── Right: Median survival time distribution ──────────────────────────────
     median_times = waf.predict_median(df_scaled)
+    # Numerical Guard: Filter infs and clip to reasonable range
+    median_times = np.nan_to_num(median_times, nan=0.0, posinf=t_max*2)
+    
     axes[1].hist(median_times, bins=40, color="#3498db", edgecolor="white", alpha=0.85)
-    axes[1].axvline(median_times.median(), color="#e74c3c", linewidth=2,
-                    linestyle="--", label=f"Median = {median_times.median():.0f}d")
+    med_val = np.median(median_times)
+    axes[1].axvline(med_val, color="#e74c3c", linewidth=2,
+                    linestyle="--", label=f"Median = {med_val:.0f}d")
     axes[1].set_title("Distribution of Predicted Median Survival Time", fontsize=13, fontweight="bold")
     axes[1].set_xlabel("Predicted Median Survival (days)")
     axes[1].set_ylabel("Number of Customers")
@@ -140,9 +144,13 @@ def plot_hazard_trajectories(
     t_grid = np.linspace(1, t_max, 300)
 
     S_hat = waf.predict_survival_function(df_scaled, times=t_grid).values  # (T, N)
+    S_hat = np.clip(S_hat, 1e-8, 1.0) # Numerical Guard
+
     dS    = np.diff(S_hat, axis=0, prepend=S_hat[[0], :])
     dt    = np.diff(t_grid, prepend=t_grid[0])[:, None]
-    H     = np.clip(-dS / (S_hat + 1e-10) / (dt + 1e-10), 0, None)  # (T, N)
+    H     = -dS / (S_hat * dt)
+    H     = np.nan_to_num(H, nan=0.0, posinf=1.0) # Numerical Guard
+    H     = np.clip(H, 0, 1.0) # Clip hazard to sane range for plotting
 
     fig, ax = plt.subplots(figsize=(11, 6))
 
@@ -289,6 +297,7 @@ def plot_brier_score_over_time(
     t_grid = np.linspace(t_min, t_max, t_grid_steps)
 
     S_hat = model.predict_survival_function(df_scaled, times=t_grid).values
+    S_hat = np.nan_to_num(S_hat, nan=0.5, posinf=1.0, neginf=0.0)
 
     brier_scores = []
     for j, t in enumerate(t_grid):

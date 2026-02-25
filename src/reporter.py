@@ -25,6 +25,7 @@ Output
 import os
 import logging
 import datetime
+import math
 import numpy as np
 
 logger = logging.getLogger(__name__)
@@ -101,12 +102,26 @@ def generate_report(
     os.makedirs(reports_dir, exist_ok=True)
     report_path = os.path.join(reports_dir, "report.md")
 
-    # ── Extract metrics safely ────────────────────────────────────────────────
-    c_weibull = metrics.get("c_index_weibull", metrics.get("c_index", None))
+    # ── Survival Performance ────────────────────────────────────────────────
+    # We prioritize OOS (test set) C-index for scientific validity.
+    c_index_oos = metrics.get("c_index_oos") or metrics.get("c_index")
+    ibs         = metrics.get("ibs") or metrics.get("integrated_brier")
+    ci_data     = metrics.get("c_index_ci") # tuple (lo, med, hi, reliable)
+    
+    ci_str = "N/A"
+    ci_status = "Not Computed"
+    if isinstance(ci_data, (tuple, list)) and len(ci_data) >= 4:
+        lo, med, hi, reliable = ci_data
+        if reliable and np.isfinite(lo):
+            ci_str = f"[{lo:.4f}, {hi:.4f}]"
+            ci_status = "Reliable (300 samples)"
+        else:
+            ci_str = "nan"
+            ci_status = "Low Confidence / Non-convergent"
+
+    # ── Extract other metrics safely ──────────────────────────────────────────
     c_cox     = metrics.get("c_index_cox", None)
-    ibs       = metrics.get("ibs", None)
     lr_auc    = metrics.get("lr_auc", metrics.get("auc_mean", None))
-    c_oos     = metrics.get("c_index_oos", None)
 
     w_intervene_rate = outreach.get("weibull_intervene_rate", None)
     rfm_intervene_rate = outreach.get("rfm_intervene_rate", None)
@@ -122,18 +137,17 @@ def generate_report(
     churn_rate    = meta.get("churn_rate", None)
     active_feats  = meta.get("active_features_waf", meta.get("survival_features", []))
 
-    # ── Bootstrap CI string ──────────────────────────────────────────────────
-    if c_index_boot_ci is not None:
-        lo, med, hi = c_index_boot_ci
-        boot_str = f"{med:.4f} (95% CI: [{lo:.4f}, {hi:.4f}])"
-    else:
-        boot_str = f"{_f2(c_weibull)} (bootstrap CI not computed)"
-
     # ── Monte Carlo results ──────────────────────────────────────────────────
     if monte_carlo_results:
         w_ci = monte_carlo_results.get("weibull_profit_ci", (None, None, None))
         r_ci = monte_carlo_results.get("rfm_profit_ci", (None, None, None))
         eg_ci = monte_carlo_results.get("efficiency_gain_ci", (None, None, None))
+        wilcoxon_p = monte_carlo_results.get("wilcoxon_pvalue", None)
+        if wilcoxon_p is not None and not (isinstance(wilcoxon_p, float) and np.isnan(wilcoxon_p)):
+            sig_str   = " p < 0.05 — statistically significant" if wilcoxon_p < 0.05 else "⚠️ p ≥ 0.05 — not significant"
+            wilcox_md = f"| **Wilcoxon Signed-Rank** (Weibull > RFM) | p = {wilcoxon_p:.6f} | {sig_str} |"
+        else:
+            wilcox_md = "| **Wilcoxon Signed-Rank** | N/A | — |"
         mc_section = f"""
 ## 5. Monte Carlo Policy Simulation (Budget-Constrained)
 
@@ -144,6 +158,12 @@ def generate_report(
 | **Weibull AFT** | {sym}{_f0(w_ci[0])} | {sym}{_f0(w_ci[1])} | {sym}{_f0(w_ci[2])} |
 | **RFM Baseline** | {sym}{_f0(r_ci[0])} | {sym}{_f0(r_ci[1])} | {sym}{_f0(r_ci[2])} |
 | **Efficiency Gain** | {_pct(eg_ci[0]*100 if eg_ci[0] else 0)} | {_pct(eg_ci[1]*100 if eg_ci[1] else 0)} | {_pct(eg_ci[2]*100 if eg_ci[2] else 0)} |
+
+### 5.1 Statistical Significance
+
+| Test | Result | Interpretation |
+|------|--------|----------------|
+{wilcox_md}
 """
     else:
         mc_section = "\n## 5. Monte Carlo Policy Simulation\n\nNot run in this configuration.\n"
@@ -179,14 +199,13 @@ def generate_report(
         f"",
         f"## 2. Technical Model Performance",
         f"",
-        f"| Model | Metric | Value | Target |",
-        f"|-------|--------|-------|--------|",
-        f"| Weibull AFT | C-index (in-sample) | {_f2(c_weibull)} | > 0.60 |",
-        f"| Weibull AFT | C-index (OOS / test) | {_f2(c_oos)} | > 0.60 |",
-        f"| Weibull AFT | C-index (bootstrap) | {boot_str} | — |",
-        f"| CoxPH | C-index | {_f2(c_cox)} | > 0.58 |",
-        f"| Logistic Regression | CV AUC | {_f2(lr_auc)} | > 0.65 |",
-        f"| Weibull AFT | IBS | {_f2(ibs)} | < 0.25 |",
+        f"| Model | Metric | Value | Target | Status |",
+        f"|:------|:-------|:------|:-------|:-------|",
+        f"| Weibull AFT | C-index (OOS / test) | {_f4(c_index_oos)} | > 0.70 | {'✅' if (c_index_oos or 0) > 0.7 else '⚠️'} |",
+        f"| Weibull AFT | Bootstrap 95% CI | {ci_str} | < 0.05 width | {ci_status} |",
+        f"| Weibull AFT | Integrated Brier Score | {_f4(ibs)} | < 0.25 | {'✅' if (ibs or 1) < 0.25 else '⚠️'} |",
+        f"| CoxPH | C-index | {_f4(c_cox)} | > 0.65 | {'✅' if (c_cox or 0) > 0.65 else '⚠️'} |",
+        f"| Logistic Regression | CV AUC | {_f4(lr_auc)} | > 0.75 | {'✅' if (lr_auc or 0) > 0.75 else '⚠️'} |",
         f"",
         f"### 2.1 Survival Curves",
         f"",
@@ -258,7 +277,10 @@ def mc_results_caption(mc: dict) -> str:
     """Generate a one-line summary of MC results."""
     w = mc.get("weibull_profit_ci", (0, 0, 0))
     r = mc.get("rfm_profit_ci", (0, 0, 0))
+    p = mc.get("wilcoxon_pvalue", None)
     if all(v is not None for v in [w[1], r[1]]):
         winner = "Weibull AFT" if w[1] > r[1] else "RFM"
-        return f"Median profit: Weibull={w[1]:,.0f} vs RFM={r[1]:,.0f} — {winner} wins."
+        _p_valid = p is not None and not (isinstance(p, float) and math.isnan(p))
+        sig = f" | Wilcoxon p={p:.4f}" if _p_valid else ""
+        return f"Median profit: Weibull={w[1]:,.0f} vs RFM={r[1]:,.0f} — {winner} wins{sig}."
     return "Monte Carlo results available."

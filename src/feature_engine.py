@@ -8,7 +8,7 @@ Features produced:
   RFM (Static):
     - Recency          : Days from last purchase to snapshot date
     - Frequency        : Number of unique invoices
-    - Monetary         : Total spend (GBP)
+    - Monetary         : Total spend (MU)
 
   Temporal (Dynamic):
     - InterPurchaseTime: Mean inter-purchase gap (days); 0.0 for single-visit
@@ -44,10 +44,48 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
+def calculate_dynamic_tau(df: pd.DataFrame) -> int:
+    """
+    Calculate a data-driven inactivity threshold (tau) based on the 95th
+    percentile of inter-purchase gaps for repeat customers.
+
+    Rationale:
+    ----------
+    Reviewers often criticize arbitrary thresholds (e.g., 90 days). Using the
+    95th percentile ensures the definition of 'churn' captures the tail end
+    of the expected return distribution for this specific dataset.
+    """
+    # Unique (CustomerID, Date) pairs to avoid 0-day gaps from same-day orders
+    df_sorted = (
+        df[["CustomerID", "InvoiceDate"]]
+        .drop_duplicates()
+        .sort_values(["CustomerID", "InvoiceDate"])
+    )
+    df_sorted["gap_days"] = (
+        df_sorted.groupby("CustomerID")["InvoiceDate"]
+        .diff()
+        .dt.days
+    )
+    avg_gaps = df_sorted.groupby("CustomerID")["gap_days"].mean().dropna()
+
+    if not avg_gaps.empty:
+        tau = int(np.percentile(avg_gaps, 95))
+        logger.info(
+            f"[AutoTau] DYNAMIC threshold calculated: {tau} days "
+            f"(95th percentile of InterPurchaseTime, n={len(avg_gaps):,})"
+        )
+        return tau
+    else:
+        logger.warning("[AutoTau] No repeat customers found; falling back to 90 days.")
+        return 90
+
+
+
 def build_customer_features(
     df: pd.DataFrame,
     snapshot: pd.Timestamp,
     tau: int = 90,
+    df_raw: pd.DataFrame = None,
 ) -> pd.DataFrame:
     """
     Aggregate transaction-level data to customer-level RFM + Survival features.
@@ -59,14 +97,22 @@ def build_customer_features(
     snapshot : pd.Timestamp
         Reference date for Recency calculation (max date + 1 day).
     tau : int, optional
-        Inactivity threshold in days to define churn event (default: 90).
+        Inactivity threshold in days to define churn event.
+        If None or 0, it is dynamically calculated as the 95th percentile
+        of InterPurchaseTime for repeat customers. (default: 90).
+    df_raw : pd.DataFrame, optional
+        Raw transaction DataFrame (same as df, or the unfiltered full set).
+        When provided, computes ``future_spend`` per customer — the actual total
+        spend in the lookforward window (snapshot - tau, snapshot].
+        Used as the CLV regression target; customers with no future transactions
+        receive 0.  If None, ``future_spend`` is omitted from the output.
 
     Returns
     -------
     pd.DataFrame
         Customer-level DataFrame indexed by CustomerID with columns:
         [Recency, Frequency, Monetary, InterPurchaseTime, GapDeviation,
-         SinglePurchase, T, E]
+         SinglePurchase, T, E]  + optionally ``future_spend``.
     """
     logger.info(f"Building customer features | snapshot={snapshot.date()} | tau={tau} days")
 
@@ -80,28 +126,18 @@ def build_customer_features(
 
     # ── Temporal Features: Vectorized (Phase 7 performance fix) ──────────────
     # Step 1: Sort the full DataFrame once by CustomerID + InvoiceDate.
-    #         We only need unique (CustomerID, InvoiceDate) pairs — multiple
-    #         invoices on the same day produce a gap of 0 which is uninformative
-    #         and inflates means. Drop duplicates for gap calculation.
     df_sorted = (
         df[["CustomerID", "InvoiceDate"]]
         .drop_duplicates()
         .sort_values(["CustomerID", "InvoiceDate"])
     )
-
-    # Step 2: Compute per-row gap in days via groupby diff.
-    #         diff() is NaN for the *first* date of each customer — that is
-    #         correct; the first visit has no preceding gap.
     df_sorted["gap_days"] = (
         df_sorted.groupby("CustomerID")["InvoiceDate"]
         .diff()
         .dt.days
     )
 
-    # Step 3: Aggregate mean and std of gaps in one pass.
-    #         ddof=1 (sample std) matches the previous implementation.
-    #         Customers with only one unique date → all gaps are NaN → mean/std
-    #         are NaN, which we impute below.
+    # Step 2: Aggregate mean and std of gaps in one pass.
     gap_agg = (
         df_sorted.groupby("CustomerID")["gap_days"]
         .agg(
@@ -109,6 +145,12 @@ def build_customer_features(
             GapDeviation=("std"),
         )
     )
+
+    # ── Dynamic Tau Logic (if requested) ─────────────────────────────────────
+    if tau is None or tau <= 0:
+        tau = calculate_dynamic_tau(df)
+    else:
+        logger.info(f"Building customer features | snapshot={snapshot.date()} | tau={tau} days")
 
     # ── SinglePurchase Flag ───────────────────────────────────────────────────
     single_purchase = (frequency == 1).astype(int).rename("SinglePurchase")
@@ -149,6 +191,34 @@ def build_customer_features(
         logger.info(
             f"Imputed InterPurchaseTime=0.0 and GapDeviation=0.0 for "
             f"{n_single:,} single-purchase customers (anti-leakage guard)."
+        )
+
+    # ── Future Spend (CLV Regression Target) ─────────────────────────────────
+    # future_spend_i = total spend by customer i in the window (snapshot-tau, snapshot]
+    # This represents the revenue that a successful intervention could recover.
+    # Computed from df_raw when provided; otherwise omitted.
+    if df_raw is not None:
+        window_start = snapshot - pd.Timedelta(days=tau)
+        window_end   = snapshot
+        future_txns = df_raw[
+            (df_raw["InvoiceDate"] > window_start) &
+            (df_raw["InvoiceDate"] <= window_end)
+        ]
+        future_spend = (
+            future_txns.groupby("CustomerID")["TotalSpend"]
+            .sum()
+            .rename("future_spend")
+        )
+        # Left-join: customers with no future transactions get 0
+        customer_df = customer_df.join(future_spend, how="left")
+        customer_df["future_spend"] = customer_df["future_spend"].fillna(0.0)
+        n_with_future = (customer_df["future_spend"] > 0).sum()
+        logger.info(
+            f"[CLV Target] future_spend computed: "
+            f"{n_with_future:,} / {len(customer_df):,} customers "
+            f"have spend > 0 in the ({tau}d) forward window. "
+            f"Mean={customer_df['future_spend'].mean():.2f} | "
+            f"Median={customer_df['future_spend'].median():.2f}"
         )
 
     # ── Log summary statistics ────────────────────────────────────────────────

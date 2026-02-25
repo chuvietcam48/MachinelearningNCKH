@@ -40,14 +40,23 @@ warnings.filterwarnings("ignore", category=UserWarning)
 # Project imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.dataset_registry   import get_dataset, list_datasets
-from src.feature_engine import build_customer_features, sensitivity_analysis_tau
+from src.feature_engine import (
+    build_customer_features,
+    calculate_dynamic_tau,
+    sensitivity_analysis_tau,
+)
 from src.models         import (
     train_weibull_aft, train_coxph, train_logistic, rfm_segment,
+    train_clv_regressor, CLV_FEATURES,
     SURVIVAL_FEATURES,
     compare_survival_distributions,  # E3
 )
 from src.simulator       import run_monte_carlo_simulation
-from src.policy         import make_intervention_decisions, rfm_intervention_decisions
+from src.policy         import (
+    make_intervention_decisions,
+    rfm_intervention_decisions,
+    lr_intervention_decisions,
+)
 from src.uplift         import run_uplift_analysis
 from src.evaluation     import (
     compute_c_index,
@@ -101,8 +110,8 @@ def parse_args():
         description="Decision-Centric Customer Re-Engagement Pipeline"
     )
     parser.add_argument(
-        "--tau", type=int, default=90,
-        help="Inactivity threshold in days to define churn (default: 90)"
+        "--tau", type=int, default=0,
+        help="Inactivity threshold (days). Set to 0 for data-driven dynamic tau (default: 0)"
     )
     parser.add_argument(
         "--no-shap", action="store_true",
@@ -223,9 +232,43 @@ def main():
     logger = logging.getLogger("main")
     args = parse_args()
 
+    # ── STEP 1: Load Data & Resolve Tau ───────────────────────────────────────
+    logger.info(f"\n[STEP 1] Loading and cleaning dataset ({args.dataset.upper()})...")
+
+    ds = get_dataset(args.dataset)
+    logger.info(f"  Dataset : {ds.display}")
+    logger.info(f"  Path    : {ds.data_path}")
+    df_clean = ds.loader_fn(ds.data_path)
+    snapshot = ds.snapshot_fn(df_clean)
+
+    # Resolve Tau (Dynamic or Fixed)
+    dataset_duration = (df_clean["InvoiceDate"].max() - df_clean["InvoiceDate"].min()).days
+    tau = args.tau
+
+    if tau == 0:
+        logger.info("\n[STEP 1b] tau=0 requested. Calculating dynamic threshold...")
+        tau = calculate_dynamic_tau(df_clean)
+        logger.info(f"  Dynamic tau resolved to {tau} days.")
+    else:
+        logger.info(f"\n[STEP 1b] Using fixed threshold tau={tau} days.")
+
+    # Auto-Sanity Check
+    if tau > dataset_duration * 0.5:
+        corrected_tau = max(dataset_duration // 3, 1)
+        logger.warning("!" * 70)
+        logger.warning(f"  CRITICAL: tau ({tau}d) exceeds 50% of dataset duration ({dataset_duration}d).")
+        logger.warning(f"  AUTO-CORRECTING tau: {tau}d -> {corrected_tau}d")
+        logger.warning("!" * 70)
+        tau = corrected_tau
+    else:
+        logger.info(f"[AutoTau] tau={tau}d is safe (duration={dataset_duration}d).")
+
+    logger.info(f"  Effective tau = {tau} days")
+
     # ── Dynamic Output Paths (Phase 11) ───────────────────────────────────────
     # Create isolated output directories for this specific dataset & tau configuration
-    RUN_DIR     = os.path.join("outputs", f"{args.dataset.upper()}_tau{args.tau}")
+    # Use resolved tau in the path name so it doesn't stay 'tau0'
+    RUN_DIR     = os.path.join("outputs", f"{args.dataset.upper()}_tau{tau}")
     FIGURES_DIR = os.path.join(RUN_DIR, "figures")
     REPORTS_DIR = os.path.join(RUN_DIR, "reports")
     MODELS_DIR  = os.path.join(RUN_DIR, "models")
@@ -249,7 +292,7 @@ def main():
 
     logger.info("=" * 70)
     logger.info("  DECISION-CENTRIC CUSTOMER RE-ENGAGEMENT PIPELINE")
-    logger.info(f"  Dataset = {args.dataset.upper()} | tau = {args.tau}d | SHAP = {not args.no_shap}")
+    logger.info(f"  Dataset = {args.dataset.upper()} | tau = {tau}d | SHAP = {not args.no_shap}")
     logger.info(f"  Output Dir = {RUN_DIR}")
     logger.info("=" * 70)
 
@@ -259,10 +302,10 @@ def main():
         if not args.no_mlflow:
             import mlflow
             mlflow.set_experiment("customer_retention_survival")
-            mlflow.start_run(run_name=f"{args.dataset.upper()}_tau{args.tau}_{_RUN_TS}")
+            mlflow.start_run(run_name=f"{args.dataset.upper()}_tau{tau}_{_RUN_TS}")
             mlflow.log_params({
                 "dataset":   args.dataset,
-                "tau":       args.tau,
+                "tau":       tau,
                 "shap":      not args.no_shap,
                 "uplift":    args.uplift,
             })
@@ -271,31 +314,6 @@ def main():
     except Exception as _mlf_exc:
         pass # Silently fail if mlflow not installed or configured, handled by log below
         logger.info(f"[MLflow] Tracking disabled: {_mlf_exc}")
-
-    # ── STEP 1: Load & Clean Data ─────────────────────────────────────────────
-    logger.info(f"\n[STEP 1] Loading and cleaning dataset ({args.dataset.upper()})...")
-
-    ds = get_dataset(args.dataset)
-    logger.info(f"  Dataset : {ds.display}")
-    logger.info(f"  Path    : {ds.data_path}")
-    df_clean = ds.loader_fn(ds.data_path)
-    snapshot = ds.snapshot_fn(df_clean)
-
-    # ── STEP 1b: Auto-Tau Sanity Check ────────────────────────────────────────
-    dataset_duration = (df_clean["InvoiceDate"].max() - df_clean["InvoiceDate"].min()).days
-    tau = args.tau
-
-    if tau > dataset_duration * 0.5:
-        corrected_tau = max(dataset_duration // 3, 1)
-        logger.warning("!" * 70)
-        logger.warning(f"  CRITICAL: tau ({tau}d) exceeds 50% of dataset duration ({dataset_duration}d).")
-        logger.warning(f"  AUTO-CORRECTING tau: {tau}d -> {corrected_tau}d")
-        logger.warning("!" * 70)
-        tau = corrected_tau
-    else:
-        logger.info(f"[AutoTau] tau={tau}d is safe (duration={dataset_duration}d).")
-
-    logger.info(f"  Effective tau = {tau} days")
 
     # ── STEP 2: Feature Engineering (with Caching) ────────────────────────────
     logger.info(f"\n[STEP 2] Engineering customer features (tau={tau}d)...")
@@ -308,7 +326,7 @@ def main():
         logger.info(f"  Loaded {len(customer_df):,} customers from cache.")
     else:
         logger.info("  [Cache Miss] Computing features from scratch...")
-        customer_df = build_customer_features(df_clean, snapshot, tau=tau)
+        customer_df = build_customer_features(df_clean, snapshot, tau=tau, df_raw=df_clean)
         customer_df.to_parquet(cache_path)
         logger.info(f"  Saved features to cache -> {cache_path}")
 
@@ -350,6 +368,39 @@ def main():
     waf, df_scaled_train_waf, preprocessor_waf, active_features_waf = train_weibull_aft(customer_df_train)
     cph, df_scaled_train_cph, preprocessor_cph, active_features_cph = train_coxph(customer_df_train)
     lr, lr_pipeline, lr_cv_metrics = train_logistic(customer_df_train)
+
+    # ── STEP 4b-CLV: Train CLV Regressor on train split ───────────────────────
+    # future_spend is only available if cache was bypassed (df_raw was passed).
+    # If loaded from cache, it may already be present too.
+    predicted_clv_all = None  # default: fall back to historical Monetary
+    if "future_spend" in customer_df_train.columns:
+        logger.info("[STEP 4b-CLV] Training CLV regressor (RandomForest) on train split...")
+        avail_clv = [f for f in CLV_FEATURES if f in customer_df_train.columns]
+        X_train_clv  = customer_df_train[avail_clv]
+        y_train_spend = customer_df_train["future_spend"]
+        rf_clv_pipeline, _ = train_clv_regressor(X_train_clv, y_train_spend)
+
+        # Predict on ALL customers (test set is included — no leakage since
+        # model was fit on train only; predict is just transform)
+        avail_clv_all = [f for f in CLV_FEATURES if f in customer_df.columns]
+        X_all_clv = customer_df[avail_clv_all]
+        raw_predictions = rf_clv_pipeline.predict(X_all_clv.values)
+        predicted_clv_all = pd.Series(
+            np.clip(raw_predictions, 0, None),
+            index=customer_df.index,
+            name="predicted_clv",
+        )
+        logger.info(
+            f"[CLV] Predicted CLV on all {len(predicted_clv_all):,} customers | "
+            f"mean={predicted_clv_all.mean():.2f} | median={predicted_clv_all.median():.2f}"
+        )
+    else:
+        rf_clv_pipeline = None
+        logger.warning(
+            "[STEP 4b-CLV] 'future_spend' column not found in customer_df_train. "
+            "CLV regressor skipped — EVI will use historical Monetary."
+        )
+
     _t4_end = _time.perf_counter()
     logger.info(f"  [Runtime] Model training: {_t4_end - _t4_start:.2f}s")
 
@@ -413,10 +464,43 @@ def main():
     _t5_start = _time.perf_counter()  # E7
     t_now = float(df_scaled_waf["T"].median())
 
+    # EVI safety margin — use dataset override or global default
+    policy_cfg = load_config_with_overrides(args.dataset).get("policy", {})
+    min_evi = policy_cfg.get("min_evi_threshold", 0.0)
+
     weibull_decisions = make_intervention_decisions(
-        waf, df_scaled_waf, customer_df, t_now=t_now
+        waf, df_scaled_waf, customer_df, t_now=t_now,
+        min_evi_threshold=min_evi,
+        predicted_clv=predicted_clv_all,     # None → falls back to historical Monetary
     )
     rfm_decisions = rfm_intervention_decisions(rfm_df)
+
+    # ── LR+EVI Baseline Policy ────────────────────────────────────────────────
+    lr_decisions_df = None
+    if rf_clv_pipeline is not None:
+        logger.info("[STEP 5] Computing LR+EVI baseline policy decisions...")
+        try:
+            # Build a constant uplift Series (p_response) — real uplift from T-Learner
+            # will be used if available (see STEP 5c), but for the baseline we use a
+            # constant so LR EVI mirrors the Weibull EVI formula exactly.
+            from src.policy import DEFAULT_RESPONSE_RATE
+            constant_uplift = pd.Series(
+                DEFAULT_RESPONSE_RATE,
+                index=customer_df.index,
+                name="tau_hat",
+            )
+            lr_decisions_df = lr_intervention_decisions(
+                lr_pipeline=lr_pipeline,
+                customer_df=customer_df,
+                uplift_scores=constant_uplift,
+                predicted_clv=predicted_clv_all,
+            )
+            lr_csv = os.path.join(REPORTS_DIR, "lr_decisions.csv")
+            lr_decisions_df.to_csv(lr_csv, index=False)
+            logger.info(f"  LR decisions saved -> {lr_csv}")
+        except Exception as lr_exc:
+            logger.warning(f"  LR+EVI policy failed: {lr_exc}")
+
     _t5_end = _time.perf_counter()
     logger.info(f"  [Runtime] Policy decisions (vectorized): {_t5_end - _t5_start:.3f}s")
 
@@ -431,18 +515,30 @@ def main():
         monte_carlo_results = run_monte_carlo_simulation(
             df_decisions=weibull_decisions,
             n_iterations=1000,
+            lr_decisions=lr_decisions_df,   # None if CLV regressor skipped
         )
         w_ci  = monte_carlo_results.get("weibull_profit_ci",  (0, 0, 0))
         r_ci  = monte_carlo_results.get("rfm_profit_ci",      (0, 0, 0))
+        lr_ci = monte_carlo_results.get("lr_profit_ci",       None)
         eg_ci = monte_carlo_results.get("efficiency_gain_ci", (0, 0, 0))
+        
+        # DYNAMIC CURRENCY
+        from src.dataset_registry import get_currency_symbol
+        _sym = get_currency_symbol()
+        
         logger.info(
             f"  Weibull Policy  Profit  95% CI: "
-            f"[£{w_ci[0]:,.0f}, £{w_ci[1]:,.0f}, £{w_ci[2]:,.0f}]"
+            f"[{_sym}{w_ci[0]:,.0f}, {_sym}{w_ci[1]:,.0f}, {_sym}{w_ci[2]:,.0f}]"
         )
         logger.info(
             f"  RFM Baseline    Profit  95% CI: "
-            f"[£{r_ci[0]:,.0f}, £{r_ci[1]:,.0f}, £{r_ci[2]:,.0f}]"
+            f"[{_sym}{r_ci[0]:,.0f}, {_sym}{r_ci[1]:,.0f}, {_sym}{r_ci[2]:,.0f}]"
         )
+        if lr_ci:
+            logger.info(
+                f"  LR+EVI Baseline Profit  95% CI: "
+                f"[{_sym}{lr_ci[0]:,.0f}, {_sym}{lr_ci[1]:,.0f}, {_sym}{lr_ci[2]:,.0f}]"
+            )
         logger.info(
             f"  Efficiency Gain         95% CI: "
             f"[{eg_ci[0]:+.1%}, {eg_ci[1]:+.1%}, {eg_ci[2]:+.1%}]"
@@ -573,13 +669,18 @@ def main():
 
     # Bundle metrics for saving
     run_metrics = {
+        "dataset":               args.dataset,
+        "tau":                   tau,
+        "n_customers":           len(customer_df),
+        "churn_rate":            customer_df["E"].mean(),
         "c_index_weibull_train": c_index_weibull,
-        "c_index_weibull_oos":   oos_c_waf,
+        "c_index_oos":           oos_c_waf, # Match reporter key
         "c_index_cox_train":     c_index_cox,
-        "ibs_train":             ibs,
+        "ibs":                   ibs_oos if ibs_oos is not None else ibs, # Prioritize OOS
         "cv_mean_c_index":       cv_mean_c,
         "cv_std_c_index":        cv_std_c,
         "outreach_efficiency":   outreach_metrics.get("efficiency_gain_pct", 0.0),
+        "efficiency_gain_pct":   outreach_metrics.get("efficiency_gain_pct", 0.0), # Duplicate for report
         "revenue_lift":          revenue_metrics.get("revenue_precision_lift_pct", 0.0),
         "uplift_qini":           uplift_results.get("qini_auc_ratio", None),
         "uplift_persuadables":   uplift_results.get("persuadable_pct", None),
@@ -682,9 +783,14 @@ def main():
     boot_ci = None
     try:
         logger.info("[D2] Computing bootstrap 95% CI for C-index (n_boot=300)...")
-        boot_ci = bootstrap_c_index(waf, df_scaled_waf, n_boot=300)
-        lo, med, hi = boot_ci
-        logger.info(f"  C-index 95%% CI: [{lo:.4f}, {hi:.4f}]  (median={med:.4f})")
+        # Now returns (lo, med, hi, reliable)
+        boot_ci = bootstrap_c_index(waf, df_scaled_test_waf, n_boot=300)
+        lo, med, hi, reliable = boot_ci
+        if reliable:
+            logger.info(f"  C-index 95%% CI: [{lo:.4f}, {hi:.4f}]  (median={med:.4f})")
+            run_metrics["c_index_ci"] = boot_ci
+        else:
+            logger.warning("  Bootstrap CI is unreliable (insufficient valid samples).")
     except Exception as e:
         logger.warning(f"Bootstrap CI failed: {e}")
 
@@ -696,14 +802,14 @@ def main():
                 "n_customers":        len(customer_df),
                 "churn_rate":         customer_df["E"].mean(),
                 "active_features_waf": active_features_waf,
-                "tau":                args.tau,
+                "tau":                tau,
             },
             metrics=run_metrics,
             outreach=outreach_metrics,
             revenue=revenue_metrics,
             run_dir=RUN_DIR,
             dataset_name=ds_display,
-            tau=args.tau,
+            tau=tau,
             c_index_boot_ci=boot_ci,
             monte_carlo_results=monte_carlo_results if monte_carlo_results else None,
         )
