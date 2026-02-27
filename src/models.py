@@ -59,7 +59,8 @@ SURVIVAL_FEATURES = [
 ]
 
 # Columns that are never input features regardless of what's in the DataFrame
-_NON_FEATURE_COLS = {"T", "E", "CustomerID"}
+# BUG-6: future_spend is the CLV regression TARGET — must never leak into survival features
+_NON_FEATURE_COLS = {"T", "E", "CustomerID", "future_spend"}
 
 
 def get_survival_features(customer_df: pd.DataFrame) -> list:

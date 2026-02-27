@@ -246,10 +246,20 @@ def compute_integrated_brier_score(
     """
     T_obs = df_scaled["T"].values
     E_obs = df_scaled["E"].values.astype(bool)
-    t_lo = float(np.percentile(T_obs, 5))
-    t_hi = float(np.percentile(T_obs, 95))
+
+    # sksurv requires eval times STRICTLY within [T_min, T_max) of test data.
+    # Use a safe interior range with epsilon margin to avoid boundary violations.
+    t_min_obs = float(T_obs.min())
+    t_max_obs = float(T_obs.max())
+    eps = max(1.0, (t_max_obs - t_min_obs) * 0.01)
+    t_lo = t_min_obs + eps
+    t_hi = t_max_obs - eps
     if t_hi <= t_lo:
-        t_hi = float(T_obs.max())
+        t_lo = t_min_obs + 0.5
+        t_hi = t_max_obs - 0.5
+    if t_hi <= t_lo:
+        logger.warning("[IBS] Time range too narrow for IBS. Returning 0.25 (baseline).")
+        return 0.25
     t_grid = np.linspace(t_lo, t_hi, t_grid_steps)
 
     # ── Tier 1: IPCW via scikit-survival ─────────────────────────────────────
@@ -259,9 +269,7 @@ def compute_integrated_brier_score(
             from sksurv.util import Surv
 
             y_structured = Surv.from_arrays(event=E_obs, time=T_obs)
-            # sksurv needs survival prob matrix shape (n_times, n_customers).T
             S_hat_full = model.predict_survival_function(df_scaled, times=t_grid).values  # (T, N)
-            # sksurv expects a list of step functions — supply as 2D array (N, T)
             ibs = _ipcw_ibs(y_structured, y_structured, t_grid, S_hat_full.T)
             logger.info(f"[WeibullAFT] IBS (IPCW-weighted, sksurv): {ibs:.4f}")
             return float(ibs)
@@ -271,6 +279,9 @@ def compute_integrated_brier_score(
                 "[IBS] scikit-survival not installed — using non-IPCW Brier Score (fallback). "
                 "Install for publication-grade results: pip install scikit-survival"
             )
+        except ValueError as ve:
+            logger.warning(f"[IBS] sksurv IPCW failed ({ve}). Falling back to naive Brier Score.")
+
     # ── Tier 2: Non-IPCW Naive IBS (naive backup) ───────────────────────────
     brier_scores = []
     S_hat = model.predict_survival_function(df_scaled, times=t_grid).values # (T, N)

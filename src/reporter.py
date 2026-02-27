@@ -44,6 +44,16 @@ def _f2(v) -> str:
         return str(v)
 
 
+def _f4(v) -> str:
+    """Format to 4 decimal places (technical metrics table)."""
+    if v is None:
+        return "N/A"
+    try:
+        return f"{float(v):.4f}"
+    except Exception:
+        return str(v)
+
+
 def _f0(v) -> str:
     if v is None:
         return "N/A"
@@ -122,6 +132,8 @@ def generate_report(
     # ── Extract other metrics safely ──────────────────────────────────────────
     c_cox     = metrics.get("c_index_cox", None)
     lr_auc    = metrics.get("lr_auc", metrics.get("auc_mean", None))
+    qini_coef = metrics.get("uplift_qini", None)
+    persuadable_pct = metrics.get("uplift_persuadables", None)
 
     w_intervene_rate = outreach.get("weibull_intervene_rate", None)
     rfm_intervene_rate = outreach.get("rfm_intervene_rate", None)
@@ -141,6 +153,7 @@ def generate_report(
     if monte_carlo_results:
         w_ci = monte_carlo_results.get("weibull_profit_ci", (None, None, None))
         r_ci = monte_carlo_results.get("rfm_profit_ci", (None, None, None))
+        l_ci = monte_carlo_results.get("lr_profit_ci", None)
         eg_ci = monte_carlo_results.get("efficiency_gain_ci", (None, None, None))
         wilcoxon_p = monte_carlo_results.get("wilcoxon_pvalue", None)
         if wilcoxon_p is not None and not (isinstance(wilcoxon_p, float) and np.isnan(wilcoxon_p)):
@@ -148,6 +161,10 @@ def generate_report(
             wilcox_md = f"| **Wilcoxon Signed-Rank** (Weibull > RFM) | p = {wilcoxon_p:.6f} | {sig_str} |"
         else:
             wilcox_md = "| **Wilcoxon Signed-Rank** | N/A | — |"
+        # LR+EVI row (only if 3rd arm was simulated)
+        lr_row = ""
+        if l_ci is not None:
+            lr_row = f"| **LR+EVI Baseline** | {sym}{_f0(l_ci[0])} | {sym}{_f0(l_ci[1])} | {sym}{_f0(l_ci[2])} |\n"
         mc_section = f"""
 ## 5. Monte Carlo Policy Simulation (Budget-Constrained)
 
@@ -156,7 +173,7 @@ def generate_report(
 | Policy | Lower 95% | Median | Upper 95% |
 |--------|-----------|--------|-----------|
 | **Weibull AFT** | {sym}{_f0(w_ci[0])} | {sym}{_f0(w_ci[1])} | {sym}{_f0(w_ci[2])} |
-| **RFM Baseline** | {sym}{_f0(r_ci[0])} | {sym}{_f0(r_ci[1])} | {sym}{_f0(r_ci[2])} |
+{lr_row}| **RFM Baseline** | {sym}{_f0(r_ci[0])} | {sym}{_f0(r_ci[1])} | {sym}{_f0(r_ci[2])} |
 | **Efficiency Gain** | {_pct(eg_ci[0]*100 if eg_ci[0] else 0)} | {_pct(eg_ci[1]*100 if eg_ci[1] else 0)} | {_pct(eg_ci[2]*100 if eg_ci[2] else 0)} |
 
 ### 5.1 Statistical Significance
@@ -206,6 +223,8 @@ def generate_report(
         f"| Weibull AFT | Integrated Brier Score | {_f4(ibs)} | < 0.25 | {'✅' if (ibs or 1) < 0.25 else '⚠️'} |",
         f"| CoxPH | C-index | {_f4(c_cox)} | > 0.65 | {'✅' if (c_cox or 0) > 0.65 else '⚠️'} |",
         f"| Logistic Regression | CV AUC | {_f4(lr_auc)} | > 0.75 | {'✅' if (lr_auc or 0) > 0.75 else '⚠️'} |",
+        f"| IPTW T-Learner | Qini Coefficient | {_f4(qini_coef) if qini_coef is not None else 'N/A (pass --uplift)'} | > 1.0 | {'✅' if (qini_coef or 0) > 1.0 else '⚠️' if qini_coef is not None else '—'} |",
+        f"| IPTW T-Learner | Persuadables (%) | {_pct(persuadable_pct * 100) if persuadable_pct is not None else 'N/A'} | — | — |",
         f"",
         f"### 2.1 Survival Curves",
         f"",

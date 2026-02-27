@@ -206,7 +206,7 @@ register_dataset(
 register_dataset(
     name="cdnow",
     display="CDNOW Music",
-    data_path=os.path.join(_ROOT, "data", "raw", "CDNOW_master.txt"),
+    data_path=os.path.join(_ROOT, "data", "raw", "cdnow.csv"),
     loader_fn=_load_cdnow,
     snapshot_fn=_default_snapshot,   # max + 1 day
 )

@@ -131,8 +131,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
-        "--uplift", action="store_true",
-        help="Run uplift modeling step (T-Learner + Qini curve)"
+        "--uplift", action="store_true", default=True,
+        help="Run uplift modeling step (T-Learner + Qini curve). Enabled by default."
+    )
+    parser.add_argument(
+        "--no-uplift", dest="uplift", action="store_false",
+        help="Skip uplift modeling step"
     )
     parser.add_argument(
         "--no-mlflow", action="store_true",
@@ -419,21 +423,26 @@ def main():
     #
     # Only .transform() is called here — no fitting on test/all data.
 
-    def _apply_preprocessor(prep, source_df, active_feats):
+    def _apply_preprocessor(prep, source_df, active_feats, input_feats):
         """Transform source_df with a fitted preprocessor, keep only active features + T, E."""
-        X = prep.transform(source_df[SURVIVAL_FEATURES])
-        df_out = pd.DataFrame(X, columns=SURVIVAL_FEATURES, index=source_df.index)
+        X = prep.transform(source_df[input_feats])
+        df_out = pd.DataFrame(X, columns=input_feats, index=source_df.index)
         df_out = df_out[active_feats].copy()
         df_out["T"] = source_df["T"].values
         df_out["E"] = source_df["E"].values
         return df_out
 
+    # Recover the full input_features used by each model's preprocessor
+    from src.models import get_survival_features
+    input_features_waf = get_survival_features(customer_df_train)
+    input_features_cph = get_survival_features(customer_df_train)
+
     # OOS (test) scaled frames
-    df_scaled_test_waf = _apply_preprocessor(preprocessor_waf, customer_df_test, active_features_waf)
-    df_scaled_test_cph = _apply_preprocessor(preprocessor_cph, customer_df_test, active_features_cph)
+    df_scaled_test_waf = _apply_preprocessor(preprocessor_waf, customer_df_test, active_features_waf, input_features_waf)
+    df_scaled_test_cph = _apply_preprocessor(preprocessor_cph, customer_df_test, active_features_cph, input_features_cph)
 
     # All-customer scaled frame (for intervention policy + dashboard artifacts)
-    df_scaled_waf = _apply_preprocessor(preprocessor_waf, customer_df, active_features_waf)
+    df_scaled_waf = _apply_preprocessor(preprocessor_waf, customer_df, active_features_waf, input_features_waf)
 
     # ── STEP 4a: Cross-Validation (optional) ──────────────────────────────────
     cv_mean_c = None
@@ -676,7 +685,9 @@ def main():
         "c_index_weibull_train": c_index_weibull,
         "c_index_oos":           oos_c_waf, # Match reporter key
         "c_index_cox_train":     c_index_cox,
+        "c_index_cox":           c_index_cox,  # BUG-2: reporter reads this key
         "ibs":                   ibs_oos if ibs_oos is not None else ibs, # Prioritize OOS
+        "lr_auc":                lr_cv_metrics.get("auc_mean"),  # BUG-3: reporter reads this key
         "cv_mean_c_index":       cv_mean_c,
         "cv_std_c_index":        cv_std_c,
         "outreach_efficiency":   outreach_metrics.get("efficiency_gain_pct", 0.0),
@@ -763,7 +774,7 @@ def main():
         try:
             plot_shap_summary(
                 waf, df_scaled_waf,
-                feature_cols=SURVIVAL_FEATURES,
+                feature_cols=active_features_waf,  # BUG-7: use VIF-pruned features, not static list
                 save_path=os.path.join(FIGURES_DIR, "06_shap_summary.png"),
                 save_csv_path=os.path.join(REPORTS_DIR, "shap_feature_importance.csv"),
             )
