@@ -25,6 +25,7 @@ import logging
 import os
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,15 @@ def load_data(file_path: str) -> pd.DataFrame:
     logger.info(f"Loading dataset from: {file_path}")
 
     # ── Auto-detect format ────────────────────────────────────────────────────
-    with open(file_path, "r") as f:
-        first_line = f.readline().strip()
+    # Read raw bytes to bypass Windows C-level parser OSError on non-ASCII paths.
+    import io as _io
+    with open(file_path, "rb") as _fh:
+        _raw_bytes = _fh.read()
+    first_line = _raw_bytes.split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
 
     if "customer_id" in first_line.lower() or first_line.startswith(","):
         # CSV format: ,customer_id,date,quantity,price
-        df = pd.read_csv(file_path, index_col=0)
+        df = pd.read_csv(_io.BytesIO(_raw_bytes), index_col=0)
         # Normalize column names
         df.columns = [c.strip().lower() for c in df.columns]
         df = df.rename(columns={
@@ -76,7 +80,7 @@ def load_data(file_path: str) -> pd.DataFrame:
         # Legacy space-delimited format (CDNOW_master.txt)
         try:
             df = pd.read_csv(
-                file_path,
+                _io.BytesIO(_raw_bytes),
                 sep=r"\s+",
                 header=None,
                 names=_COLS_RAW,

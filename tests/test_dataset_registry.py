@@ -105,7 +105,7 @@ class TestListDatasets(unittest.TestCase):
     def test_builtin_datasets_registered(self):
         """UCI, TaFeng, CDNOW must be in the registry."""
         names = [name for name, _ in list_datasets()]
-        for expected in ("uci", "tafeng", "cdnow"):
+        for expected in ("uci", "tafeng", "cdnow", "x5retail"):
             self.assertIn(expected, names)
 
 

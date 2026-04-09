@@ -148,5 +148,83 @@ class TestMinimalEndToEnd(unittest.TestCase):
         self.assertTrue((s >= 0).all() and (s <= 1).all())
 
 
+
+class TestX5UpliftLabelPropagation(unittest.TestCase):
+    """
+    Validates that build_customer_features() correctly propagates X5 RCT labels
+    (treatment_flg, target_flag) from transaction-level data to the customer_df.
+
+    These columns must survive aggregation so uplift.py can switch to
+    real-treatment mode and prove customer segment classification.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import warnings
+        from tests.conftest import make_transactions_df, make_snapshot
+        from src.feature_engine import build_customer_features
+        warnings.filterwarnings("ignore")
+
+        snap = make_snapshot()
+        df_tx = make_transactions_df(n_customers=40, n_rows=200, seed=77)
+
+        # Simulate X5: assign a treatment_flg and target_flag per customer
+        # (one value per customer — same across all their rows)
+        rng = np.random.default_rng(77)
+        unique_custs = df_tx["CustomerID"].unique()
+        treat_map  = {c: int(rng.integers(0, 2)) for c in unique_custs}
+        target_map = {c: int(rng.integers(0, 2)) for c in unique_custs}
+
+        df_tx["treatment_flg"] = df_tx["CustomerID"].map(treat_map)
+        df_tx["target_flag"]   = df_tx["CustomerID"].map(target_map)
+
+        cls.df_tx      = df_tx
+        cls.snap       = snap
+        cls.treat_map  = treat_map
+        cls.target_map = target_map
+        cls.customer_df = build_customer_features(df_tx, snap, tau=90)
+
+    def test_treatment_flg_present(self):
+        """treatment_flg must be present in customer_df after propagation."""
+        self.assertIn("treatment_flg", self.customer_df.columns,
+                      "treatment_flg not propagated to customer_df")
+
+    def test_target_flag_present(self):
+        """target_flag must be present in customer_df after propagation."""
+        self.assertIn("target_flag", self.customer_df.columns,
+                      "target_flag not propagated to customer_df")
+
+    def test_treatment_flg_values_binary(self):
+        """treatment_flg must only contain 0 and 1."""
+        vals = set(self.customer_df["treatment_flg"].unique())
+        self.assertTrue(vals.issubset({0, 1}), f"Non-binary values: {vals}")
+
+    def test_treatment_flg_values_match_source(self):
+        """treatment_flg in customer_df must match the per-customer assignment."""
+        # Reset index so CustomerID is a column
+        cdf = self.customer_df.reset_index()
+        for _, row in cdf.iterrows():
+            expected = self.treat_map[row["CustomerID"]]
+            self.assertEqual(row["treatment_flg"], expected,
+                             f"Mismatch for {row['CustomerID']}: "
+                             f"got {row['treatment_flg']}, expected {expected}")
+
+    def test_standard_columns_still_present(self):
+        """Core RFM + survival columns must still be present after RCT propagation."""
+        for col in ("Recency", "Frequency", "Monetary",
+                    "InterPurchaseTime", "GapDeviation", "SinglePurchase", "T", "E"):
+            self.assertIn(col, self.customer_df.columns)
+
+    def test_no_rct_cols_for_plain_transactions(self):
+        """Without treatment_flg/target_flag in raw df, customer_df must NOT have them."""
+        from tests.conftest import make_transactions_df, make_snapshot
+        from src.feature_engine import build_customer_features
+        df_plain = make_transactions_df(n_customers=20, n_rows=100, seed=1)
+        snap = make_snapshot()
+        cdf = build_customer_features(df_plain, snap, tau=90)
+        self.assertNotIn("treatment_flg", cdf.columns)
+        self.assertNotIn("target_flag", cdf.columns)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,7 @@ import os
 import logging
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,12 @@ def load_and_clean_tafeng(filepath: str) -> pd.DataFrame:
     logger.info(f"[TaFeng] Loading dataset from: {filepath}")
 
     # ── Load CSV ─────────────────────────────────────────────────────────────
-    # Use dtype=str initially for safe parsing; convert numerics below.
+    # Read bytes manually first to bypass Windows OSError on non-ASCII paths.
+    import io
+    with open(filepath, "rb") as _f:
+        _raw = io.BytesIO(_f.read())
     df = pd.read_csv(
-        filepath,
+        _raw,
         dtype=str,          # Read everything as string first
         encoding="utf-8",
     )

@@ -113,6 +113,12 @@ def build_customer_features(
         Customer-level DataFrame indexed by CustomerID with columns:
         [Recency, Frequency, Monetary, InterPurchaseTime, GapDeviation,
          SinglePurchase, T, E]  + optionally ``future_spend``.
+
+        If ``df`` contains ``treatment_flg`` and/or ``target_flag`` columns
+        (X5 RetailHero RCT labels), they are propagated to the customer-level
+        DataFrame via a per-customer ``first()`` aggregation.  This enables
+        ``src.uplift.run_uplift_analysis()`` to switch to real-treatment mode
+        automatically, producing an unbiased Qini coefficient.
     """
     logger.info(f"Building customer features | snapshot={snapshot.date()} | tau={tau} days")
 
@@ -219,6 +225,25 @@ def build_customer_features(
             f"have spend > 0 in the ({tau}d) forward window. "
             f"Mean={customer_df['future_spend'].mean():.2f} | "
             f"Median={customer_df['future_spend'].median():.2f}"
+        )
+
+    # ── RCT Label Propagation (X5 RetailHero) ────────────────────────────────
+    # If the raw transaction df contains ground-truth treatment/outcome labels
+    # (present in X5 uplift_train.csv merge), attach them at the customer level.
+    # These columns are constant per customer (RCT-assigned), so .first() is correct.
+    # This is a no-op for UCI / TaFeng / CDNOW which have no such columns.
+    _rct_cols = [c for c in ("treatment_flg", "target_flag") if c in df.columns]
+    if _rct_cols:
+        rct_per_customer = (
+            df.groupby("CustomerID")[_rct_cols]
+            .first()
+        )
+        customer_df = customer_df.join(rct_per_customer, how="left")
+        for col in _rct_cols:
+            customer_df[col] = customer_df[col].fillna(0).astype(int)
+        logger.info(
+            f"[X5 RCT] Propagated {_rct_cols} to customer_df "
+            f"({len(customer_df):,} customers) — uplift real-treatment mode enabled."
         )
 
     # ── Log summary statistics ────────────────────────────────────────────────

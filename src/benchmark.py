@@ -91,15 +91,26 @@ def run_benchmark(
             df_clean = ds.loader_fn(ds.data_path)
             snapshot = ds.snapshot_fn(df_clean)
 
-            # 2. Resolve tau (dynamic or fixed)
+            # 2. Resolve tau — priority: fn_arg > dataset YAML override > dynamic P95
             resolved_tau = tau
-            if resolved_tau == 0:
+
+            # Load per-dataset config overrides (e.g. x5retail: tau: 90)
+            ds_cfg = load_config_with_overrides(ds_name)
+            cfg_tau = ds_cfg.get("tau", None)
+
+            if resolved_tau == 0 and cfg_tau:
+                resolved_tau = int(cfg_tau)
+                logger.info(
+                    f"  [Config Tau] {ds_name} → τ = {resolved_tau} days "
+                    f"(from simulation_params.yaml)"
+                )
+            elif resolved_tau == 0:
                 resolved_tau = calculate_dynamic_tau(df_clean)
                 logger.info(f"  [Dynamic Tau] {ds_name} → τ = {resolved_tau} days")
 
-            # Auto-correct tau if > 50% of dataset duration
+            # Auto-correct if tau > 50% of dataset total duration (only if dynamic)
             dataset_duration = (df_clean["InvoiceDate"].max() - df_clean["InvoiceDate"].min()).days
-            if resolved_tau > dataset_duration * 0.5:
+            if resolved_tau > dataset_duration * 0.5 and not cfg_tau:
                 corrected = max(dataset_duration // 3, 1)
                 logger.warning(
                     f"  [AutoTau] τ={resolved_tau}d > 50% of duration ({dataset_duration}d). "
@@ -114,10 +125,17 @@ def run_benchmark(
             n_cust = len(customer_df)
             churn_rate = customer_df["E"].mean()
 
-            # 4. Train/test split
+            # 4. Train/test split — stratified if both classes have ≥ 2 members
+            min_class = customer_df["E"].value_counts().min()
+            use_stratify = customer_df["E"] if min_class >= 2 else None
+            if use_stratify is None:
+                logger.warning(
+                    f"  [{ds_name}] Minority class has only {min_class} member(s) — "
+                    f"falling back to non-stratified split."
+                )
             customer_df_train, customer_df_test = train_test_split(
                 customer_df, test_size=0.2, random_state=42,
-                stratify=customer_df["E"],
+                stratify=use_stratify,
             )
 
             # 5. Train Weibull
@@ -133,7 +151,11 @@ def run_benchmark(
                 continue
 
             # 5b. Train C-index (for OOS Gap)
-            c_index_train = waf.score(df_scaled_train, scoring_method="concordance_index")
+            try:
+                c_index_train = waf.score(df_scaled_train, scoring_method="concordance_index")
+            except ZeroDivisionError:
+                logger.warning(f"  [{ds_name}] concordance_index train failed (no admissable pairs) — fallback 0.5")
+                c_index_train = 0.5
 
             # 6. OOS evaluation
             input_feats = get_survival_features(customer_df_train)
@@ -143,7 +165,11 @@ def run_benchmark(
             df_scaled_test["T"] = customer_df_test["T"].values
             df_scaled_test["E"] = customer_df_test["E"].values
 
-            c_index_oos = waf.score(df_scaled_test, scoring_method="concordance_index")
+            try:
+                c_index_oos = waf.score(df_scaled_test, scoring_method="concordance_index")
+            except ZeroDivisionError:
+                logger.warning(f"  [{ds_name}] concordance_index OOS failed (no admissable pairs) — fallback 0.5")
+                c_index_oos = 0.5
             oos_gap = round(abs(c_index_train - c_index_oos), 4)
             ibs = compute_integrated_brier_score(waf, df_scaled_test)
 

@@ -15,6 +15,7 @@ Preprocessing Rules (from project spec):
 import os
 import logging
 import pandas as pd
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,15 @@ def load_and_clean(filepath: str) -> pd.DataFrame:
 
     ext = os.path.splitext(filepath)[1].lower()
     logger.info(f"Loading dataset from: {filepath}")
+    _path = Path(filepath)  # pathlib handles Windows non-ASCII paths correctly
 
     if ext in (".xlsx", ".xls"):
-        df = pd.read_excel(filepath, dtype={"CustomerID": str})
+        import io
+        with _path.open("rb") as f:
+            data = io.BytesIO(f.read())
+        df = pd.read_excel(data, dtype={"CustomerID": str})
     elif ext == ".csv":
-        df = pd.read_csv(filepath, dtype={"CustomerID": str}, encoding="latin-1")
+        df = pd.read_csv(_path, dtype={"CustomerID": str}, encoding="latin-1")
     else:
         raise ValueError(f"Unsupported file format: {ext}. Use .xlsx or .csv")
 

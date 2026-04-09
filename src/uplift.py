@@ -6,9 +6,15 @@ Uplift Modeling Proxy for the Decision-Centric Customer Re-Engagement framework.
 Background
 ----------
 True uplift modeling requires a randomised controlled trial (A/B test) with
-treatment and control groups.  The UCI Online Retail dataset contains no such
-experiment, so this module implements a *proxy* approach that is scientifically
-sound and common in academic literature:
+treatment and control groups.  Most datasets (UCI, TaFeng, CDNOW) contain no
+such experiment, so this module implements a *proxy* approach that is
+scientifically sound and common in academic literature.
+
+When the customer DataFrame contains ground-truth RCT labels
+(`treatment_flg` and `target_flag` — as in the X5 RetailHero dataset),
+the module automatically switches to **real-treatment mode**: these labels
+replace the Weibull intervention proxy, enabling an unbiased Qini
+coefficient (potentially positive for the first time).
 
   1. **IPTW-Corrected T-Learner**
      The Weibull intervention signal (EVI > 0 AND h > theta_h) acts as the
@@ -73,21 +79,63 @@ def _build_feature_matrix(
     Merge decision signals with customer RFM features.
 
     Returns a DataFrame with:
-      treatment: 1 = INTERVENE, 0 = WAIT  (LOST excluded from uplift analysis)
+      treatment : 1 = treated, 0 = control
+                  Source depends on data availability:
+                    Real-treatment mode  (X5): uses `treatment_flg` from customer_df
+                    Proxy mode (UCI/TaFeng/CDNOW): uses Weibull INTERVENE decision
       RFM features for T-Learner / PSM
-      Monetary: outcome proxy
+      Monetary : outcome proxy
+                  Real-treatment mode: uses `target_flag` (binary purchase outcome)
+                  Proxy mode: uses historical Monetary spend
     """
-    # Exclude LOST — they are not actionable
-    df = weibull_decisions[weibull_decisions["decision"] != "LOST"].copy()
-
-    df["treatment"] = (df["decision"] == "INTERVENE").astype(int)
-
     # Defensively reset index on customer_df in case CustomerID is the index
     cdf = customer_df.reset_index() if "CustomerID" not in customer_df.columns else customer_df.copy()
 
-    # Merge RFM covariates
+    # ── Detect real-treatment mode (X5 RetailHero) ────────────────────────────
+    has_real_labels = (
+        "treatment_flg" in cdf.columns and "target_flag" in cdf.columns
+    )
+
+    if has_real_labels:
+        logger.info(
+            "[Uplift] Ground-truth labels detected (treatment_flg + target_flag). "
+            "Switching to REAL-TREATMENT mode — Qini may be positive."
+        )
+        # Use ALL customers (no LOST filter — we have real treatment assignment)
+        df = weibull_decisions.copy()
+        # Map real treatment labels from customer_df
+        label_cols = ["CustomerID", "treatment_flg", "target_flag"]
+        avail_labels = [c for c in label_cols if c in cdf.columns]
+        df = df.merge(
+            cdf[avail_labels],
+            on="CustomerID",
+            how="left",
+        )
+        df["treatment"] = df["treatment_flg"].fillna(0).astype(int)
+        # Use target_flag (0/1 purchase outcome) as the monetary outcome proxy
+        df["Monetary"] = df["target_flag"].fillna(0).astype(float)
+        logger.info(
+            "[Uplift] Real treatment rate: %.1f%% | Conversion rate: %.1f%%",
+            df["treatment"].mean() * 100,
+            df["Monetary"].mean() * 100,
+        )
+    else:
+        logger.info(
+            "[Uplift] No ground-truth labels found. "
+            "Using Weibull INTERVENE proxy as treatment assignment."
+        )
+        # Exclude LOST — they are not actionable in proxy mode
+        df = weibull_decisions[weibull_decisions["decision"] != "LOST"].copy()
+        df["treatment"] = (df["decision"] == "INTERVENE").astype(int)
+
+    # ── Merge RFM covariates ──────────────────────────────────────────────────
     rfm_cols = ["CustomerID", "Recency", "Frequency", "Monetary",
                 "InterPurchaseTime", "GapDeviation", "SinglePurchase"]
+    # In real-treatment mode Monetary was already set from target_flag;
+    # only pull it from cdf in proxy mode.
+    if has_real_labels:
+        rfm_cols = [c for c in rfm_cols if c != "Monetary"]
+
     available = [c for c in rfm_cols if c in cdf.columns]
     merged = df.merge(
         cdf[available].set_index("CustomerID"),

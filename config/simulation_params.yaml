@@ -82,3 +82,18 @@ dataset_overrides:
     monte_carlo:
       rfm_top_pct: 0.35         # more conservative RFM targeting for CDNOW
 
+  x5retail:
+    tau: 14                         # fixed 14 days (grocery cycle)
+    policy:
+      hazard_threshold: 0.045        # ← TĂNG mạnh từ 0.012 lên (quan trọng nhất!)
+      response_rate: 0.18            # tăng nhẹ để phù hợp promo response
+      min_evi_threshold: 0.0
+    simulation:
+      marketing_budget: 50000.0
+      sleeping_dog_penalty: 0.20
+    monte_carlo:
+      rfm_top_pct: 0.40
+    economics:
+      currency: RUB
+      currency_symbol: "₽"
+

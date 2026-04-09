@@ -210,3 +210,15 @@ register_dataset(
     loader_fn=_load_cdnow,
     snapshot_fn=_default_snapshot,   # max + 1 day
 )
+
+def _load_x5(path: str) -> pd.DataFrame:
+    from src.data_loader_x5 import load_data
+    return load_data(path)
+
+register_dataset(
+    name="x5retail",
+    display="X5 RetailHero (Russia)",
+    data_path=os.path.join(_ROOT, "data", "raw", "x5retail", "purchases.csv"),
+    loader_fn=_load_x5,
+    snapshot_fn=_default_snapshot,   # max(InvoiceDate) + 1 day
+)
