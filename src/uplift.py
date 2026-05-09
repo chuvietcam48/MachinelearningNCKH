@@ -64,7 +64,8 @@ logger = logging.getLogger(__name__)
 
 # ── Segmentation thresholds ───────────────────────────────────────────────────
 _UPLIFT_HIGH_THR = 0.0   # tau_hat > this → responds positively to intervention
-_RESPONSE_THR    = 0.5   # predicted response prob threshold for "Sure Things"
+_RESPONSE_THR    = 0.5   # used ONLY for binary outcomes (e.g. target_flag in X5)
+                          # For continuous Y (Monetary), adaptive median threshold is used.
 
 
 # =============================================================================
@@ -320,6 +321,33 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     df["propensity"] = propensity                # for diagnostics
     df["iptw"]       = iptw_weights              # for diagnostics
 
+    # ── Adaptive response thresholds (dual) ──────────────────────────────────
+    # Use separate medians for mu_1 and mu_0 to guarantee all 4 segments appear.
+    # Using a single Y-median fails when mu_0 predictions are systematically
+    # above the population median (e.g. control group has high absolute spend).
+    #
+    # dual-median approach:
+    #   theta_1 = median(mu_1_all) → ~50% have above-median treatment outcome
+    #   theta_0 = median(mu_0_all) → ~50% have above-median control outcome
+    # → always produces ~25% in each quadrant regardless of Y scale.
+    #
+    # Exception: binary Y (0/1) → use 0.5 threshold for both (original definition).
+    mu1_all = mu_1_model.predict(X_sc)
+    mu0_all = mu_0_model.predict(X_sc)
+    is_binary_y = set(np.unique(y)).issubset({0, 1, 0.0, 1.0})
+    if is_binary_y:
+        theta_1 = theta_0 = _RESPONSE_THR
+    else:
+        theta_1 = float(np.median(mu1_all))
+        theta_0 = float(np.median(mu0_all))
+    df.attrs["response_threshold"]   = theta_1   # backward compat
+    df.attrs["response_threshold_1"] = theta_1
+    df.attrs["response_threshold_0"] = theta_0
+    logger.info(
+        "[Uplift] Dual thresholds: theta_1=%.4f, theta_0=%.4f (binary_y=%s)",
+        theta_1, theta_0, is_binary_y,
+    )
+
     # Attach trained model objects so callers (e.g. UpliftShapExplainer) can use them
     df.attrs["mu_1_model"] = mu_1_model
     df.attrs["mu_0_model"] = mu_0_model
@@ -332,26 +360,35 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
 # 3. Persuadables Segmentation
 # =============================================================================
 
-def _assign_uplift_segment(row: pd.Series) -> str:
+def _assign_uplift_segment(
+    row: pd.Series,
+    theta_1: float = _RESPONSE_THR,
+    theta_0: float = _RESPONSE_THR,
+) -> str:
     """
-    Assign Radcliffe & Surry (1999) uplift quadrant based on:
-      tau_hat  : estimated uplift from T-Learner
-      mu_1     : predicted outcome IF treated
+    Assign Radcliffe & Surry (1999) uplift quadrant.
 
-    Quadrant definitions (simplified for revenue proxy):
-      Persuadables  : uplift > 0 AND mu_1 > response_threshold
-      Sure Things   : uplift <= 0 AND mu_1 > response_threshold
-      Lost Causes   : uplift <= 0 AND mu_1 <= response_threshold
-      Sleeping Dogs : uplift > 0 AND mu_1 <= response_threshold
+    Full 2×2 definition using SEPARATE thresholds for mu_1 and mu_0:
+      theta_1 = median(mu_1_predicted)  — above-median treatment outcome
+      theta_0 = median(mu_0_predicted)  — above-median control outcome
+
+    Dual-median approach guarantees ~25% in each quadrant regardless of
+    outcome scale (binary 0/1 OR continuous Monetary).
+
+    Quadrant definitions:
+      Persuadables : mu_1 > θ₁  AND  mu_0 ≤ θ₀  (unique benefit from treatment)
+      Sure Things  : mu_1 > θ₁  AND  mu_0 > θ₀  (respond regardless)
+      Sleeping Dogs: mu_1 ≤ θ₁  AND  mu_0 > θ₀  (harmed by treatment)
+      Lost Causes  : mu_1 ≤ θ₁  AND  mu_0 ≤ θ₀  (don't respond regardless)
     """
-    is_uplift    = row["tau_hat"] > _UPLIFT_HIGH_THR
-    is_responder = row["mu_1"] > _RESPONSE_THR
+    r1 = row["mu_1"] > theta_1   # above-median outcome if treated
+    r0 = row["mu_0"] > theta_0   # above-median outcome if not treated
 
-    if is_uplift and is_responder:
+    if r1 and not r0:
         return "Persuadables"
-    elif not is_uplift and is_responder:
+    elif r1 and r0:
         return "Sure Things"
-    elif is_uplift and not is_responder:
+    elif not r1 and r0:
         return "Sleeping Dogs"
     else:
         return "Lost Causes"
@@ -393,7 +430,10 @@ def _compute_qini(df: pd.DataFrame, outcome_col: str = "Monetary") -> pd.DataFra
     cum_n_c  = np.cumsum(~treat_flag).astype(float)     # cumulative control count
 
     qini_gain        = cum_Y_t - (Y_t_all * cum_n_c / n_c)
-    random_baseline  = Y_t_all * np.arange(1, n + 1) / n
+    # Cast to float64 explicitly: on Windows, np.arange defaults to int32.
+    # int32 overflows for Y_t_all × k when Y_t_all > ~8.7M (e.g. TaFeng TWD),
+    # producing oscillating random_baseline values and degenerate Qini coefficients.
+    random_baseline  = float(Y_t_all) * np.arange(1, n + 1, dtype=np.float64) / n
 
     return pd.DataFrame({
         "pct_targeted":    np.linspace(0, 1, n + 1)[1:],
@@ -503,9 +543,13 @@ def _plot_cumulative_gain(
 # 6. Main Entry Point
 # =============================================================================
 
+# Pure behavioural features only — survival and evi are EXCLUDED because:
+#   survival = S(t) is a model output that partially determines T (via LOST threshold)
+#   evi      = p_response × CLV × (1-S) - cost DIRECTLY determines T=INTERVENE
+# Including them in X makes the T-Learner overfit on the selection mechanism,
+# inflating tau_hat and producing degenerate Qini values.
 _UPLIFT_FEATURE_COLS = [
     "Recency", "Frequency", "InterPurchaseTime", "GapDeviation", "SinglePurchase",
-    "survival", "evi",
 ]
 
 
@@ -554,8 +598,16 @@ def run_uplift_analysis(
     # 3. Fit T-Learner
     uplift_df = _fit_t_learner(merged, available_features)
 
-    # 4. Segment
-    uplift_df["uplift_segment"] = uplift_df.apply(_assign_uplift_segment, axis=1)
+    # 4. Segment — use dual adaptive thresholds stored by _fit_t_learner
+    theta_1 = uplift_df.attrs.get("response_threshold_1", _RESPONSE_THR)
+    theta_0 = uplift_df.attrs.get("response_threshold_0", _RESPONSE_THR)
+    logger.info(
+        "[Uplift] Segmenting with theta_1=%.4f, theta_0=%.4f",
+        theta_1, theta_0,
+    )
+    uplift_df["uplift_segment"] = uplift_df.apply(
+        _assign_uplift_segment, axis=1, theta_1=theta_1, theta_0=theta_0
+    )
 
     # 5. Log segment distribution
     counts = uplift_df["uplift_segment"].value_counts().to_dict()
@@ -596,14 +648,17 @@ def run_uplift_analysis(
     # Expose trained T-Learner model objects for explainability module
     uplift_df_attrs = uplift_df.attrs
     return {
-        "uplift_df":          uplift_df,
-        "segment_counts":     counts,
-        "qini_df":            qini_df,
-        "persuadable_pct":    persuadable_pct,
-        "qini_auc_ratio":     qini_coef,
+        "uplift_df":           uplift_df,
+        "segment_counts":      counts,
+        "qini_df":             qini_df,
+        "persuadable_pct":     persuadable_pct,
+        "qini_auc_ratio":      qini_coef,
+        "response_threshold":   theta_1,
+        "response_threshold_1": theta_1,
+        "response_threshold_0": theta_0,
         # T-Learner internals for UpliftShapExplainer (TreeExplainer path)
-        "mu_1_model":         uplift_df_attrs.get("mu_1_model"),
-        "mu_0_model":         uplift_df_attrs.get("mu_0_model"),
-        "imputer":            uplift_df_attrs.get("imputer"),
-        "scaler":             uplift_df_attrs.get("scaler"),
+        "mu_1_model":          uplift_df_attrs.get("mu_1_model"),
+        "mu_0_model":          uplift_df_attrs.get("mu_0_model"),
+        "imputer":             uplift_df_attrs.get("imputer"),
+        "scaler":              uplift_df_attrs.get("scaler"),
     }
