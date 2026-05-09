@@ -319,6 +319,12 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     df["mu_0"]       = mu_0_model.predict(X_sc)  # predicted outcome IF control
     df["propensity"] = propensity                # for diagnostics
     df["iptw"]       = iptw_weights              # for diagnostics
+
+    # Attach trained model objects so callers (e.g. UpliftShapExplainer) can use them
+    df.attrs["mu_1_model"] = mu_1_model
+    df.attrs["mu_0_model"] = mu_0_model
+    df.attrs["imputer"]    = imputer
+    df.attrs["scaler"]     = scaler
     return df
 
 
@@ -587,10 +593,17 @@ def run_uplift_analysis(
             cum_gain_path = os.path.join(os.path.dirname(save_path), "cumulative_gain.png")
     _plot_cumulative_gain(uplift_df, outcome_col="Monetary", save_path=cum_gain_path)
 
+    # Expose trained T-Learner model objects for explainability module
+    uplift_df_attrs = uplift_df.attrs
     return {
         "uplift_df":          uplift_df,
         "segment_counts":     counts,
         "qini_df":            qini_df,
         "persuadable_pct":    persuadable_pct,
         "qini_auc_ratio":     qini_coef,
+        # T-Learner internals for UpliftShapExplainer (TreeExplainer path)
+        "mu_1_model":         uplift_df_attrs.get("mu_1_model"),
+        "mu_0_model":         uplift_df_attrs.get("mu_0_model"),
+        "imputer":            uplift_df_attrs.get("imputer"),
+        "scaler":             uplift_df_attrs.get("scaler"),
     }

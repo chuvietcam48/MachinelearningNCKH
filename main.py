@@ -83,6 +83,57 @@ from src.sensitivity import sleeping_dog_sensitivity  # E1
 from src.benchmark import run_benchmark              # E2
 import time as _time                                 # E7
 
+# ── New Framework Modules ─────────────────────────────────────────────────────
+try:
+    from src.simulation import run_advanced_simulation
+    _HAS_ADVANCED_SIM = True
+except Exception:
+    _HAS_ADVANCED_SIM = False
+
+try:
+    from src.explainability import explain_decisions as _explain_decisions
+    _HAS_EXPLAINABILITY = True
+except Exception:
+    _HAS_EXPLAINABILITY = False
+
+try:
+    from src.evaluation.counterfactual_evaluator import run_counterfactual_evaluation
+    _HAS_COUNTERFACTUAL = True
+except Exception:
+    _HAS_COUNTERFACTUAL = False
+
+try:
+    from src.inference import CustomerScorer
+    _HAS_SCORER = True
+except Exception:
+    _HAS_SCORER = False
+
+# ── Level 1: Analysis & Extended Counterfactual ───────────────────────────────
+try:
+    from src.analysis.sensitivity_analysis import run_sensitivity_analysis
+    _HAS_SENSITIVITY = True
+except Exception:
+    _HAS_SENSITIVITY = False
+
+try:
+    from src.analysis.temporal_cv import temporal_cross_validate
+    _HAS_TEMPORAL_CV = True
+except Exception:
+    _HAS_TEMPORAL_CV = False
+
+# ── Level 2: Business Metrics & Production Sim ───────────────────────────────
+try:
+    from src.metrics.business_metrics import compute_business_metrics
+    _HAS_BIZ_METRICS = True
+except Exception:
+    _HAS_BIZ_METRICS = False
+
+try:
+    from src.simulation.production_simulator import ProductionSimulator
+    _HAS_PROD_SIM = True
+except Exception:
+    _HAS_PROD_SIM = False
+
 # Timestamped log so every run preserves its own file
 import datetime as _dt
 _RUN_TS = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -827,6 +878,265 @@ def main():
         logger.info(f"[D5] Report saved → {rpt_path}")
     except Exception as e:
         logger.warning(f"Report generation failed: {e}")
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # STEP 9: Advanced Framework Modules
+    # ═══════════════════════════════════════════════════════════════════════════
+
+    # ── STEP 9a: Advanced Multi-Period Policy Simulation ──────────────────────
+    if _HAS_ADVANCED_SIM:
+        logger.info("\n[STEP 9a] Running Advanced Multi-Period Policy Simulation...")
+        try:
+            advsim_out = run_advanced_simulation(
+                waf=waf,
+                df_scaled=df_scaled_waf,
+                customer_df=customer_df,
+                predicted_clv=predicted_clv_all,
+                n_periods=6,
+                base_budget=monte_carlo_results.get("marketing_budget", 500.0),
+                n_mc=300,
+                save_dir=FIGURES_DIR,
+                dataset_label=get_dataset(args.dataset).display,
+            )
+            advsim_summary = advsim_out["summary_df"]
+            logger.info(
+                "[STEP 9a] Multi-period simulation complete.\n%s",
+                advsim_summary.to_string(index=False),
+            )
+            advsim_summary.to_csv(
+                os.path.join(REPORTS_DIR, "advsim_summary.csv"), index=False
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 9a] Advanced simulation failed: {exc}")
+    else:
+        logger.info("[STEP 9a] Advanced simulation module not available — skipping.")
+
+    # ── STEP 9b: SHAP Explainability ──────────────────────────────────────────
+    if _HAS_EXPLAINABILITY and not args.no_shap:
+        logger.info("\n[STEP 9b] Running SHAP Explainability Analysis...")
+        try:
+            explain_out = _explain_decisions(
+                waf=waf,
+                df_scaled=df_scaled_waf,
+                feature_cols=active_features_waf,
+                weibull_decisions=weibull_decisions,
+                uplift_results=uplift_results if uplift_results else None,
+                save_dir=FIGURES_DIR,
+                dataset_label=get_dataset(args.dataset).display,
+                n_background=80,
+                n_explain=200,
+                n_local_examples=2,
+            )
+            if explain_out.get("importance_survival") is not None:
+                explain_out["importance_survival"].to_csv(
+                    os.path.join(REPORTS_DIR, "shap_importance_extended.csv"),
+                    index=False,
+                )
+            logger.info("[STEP 9b] Explainability complete — %d figures generated.",
+                        len(explain_out.get("figs", {})))
+        except Exception as exc:
+            logger.warning(f"[STEP 9b] Explainability failed: {exc}")
+    else:
+        logger.info("[STEP 9b] Explainability skipped (--no-shap or module unavailable).")
+
+    # ── STEP 9c: Counterfactual Policy Evaluation ──────────────────────────────
+    if _HAS_COUNTERFACTUAL and uplift_results:
+        logger.info("\n[STEP 9c] Running Counterfactual Policy Evaluation (DM / IPS / DR)...")
+        try:
+            cf_out = run_counterfactual_evaluation(
+                weibull_decisions=weibull_decisions,
+                customer_df=customer_df,
+                uplift_results=uplift_results,
+                rfm_decisions=rfm_decisions,
+                save_dir=REPORTS_DIR,
+                dataset_label=get_dataset(args.dataset).display,
+                n_bootstrap=300,
+            )
+            logger.info(
+                "[STEP 9c] Policy comparison:\n%s",
+                cf_out["comparison_df"][
+                    ["Policy", "TreatmentRate", "DM", "IPS", "DR"]
+                ].to_string(index=False),
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 9c] Counterfactual evaluation failed: {exc}")
+    else:
+        logger.info("[STEP 9c] Counterfactual evaluation skipped (no uplift results).")
+
+    # ── STEP 9d: Save Production Inference Pipeline ────────────────────────────
+    if _HAS_SCORER:
+        logger.info("\n[STEP 9d] Saving production CustomerScorer...")
+        try:
+            scorer = CustomerScorer.from_artifacts(
+                waf=waf,
+                preprocessor=preprocessor_waf,
+                active_features=active_features_waf,
+                tau=tau,
+                clv_pipeline=rf_clv_pipeline,
+                uplift_results=uplift_results if uplift_results else None,
+                dataset_name=args.dataset,
+            )
+            scorer.save(MODELS_DIR)
+            logger.info("[STEP 9d] CustomerScorer meta saved → %s/scorer_meta.pkl", MODELS_DIR)
+
+            # Quick self-test: score a sample of 5 customers
+            sample_df = customer_df.sample(min(5, len(customer_df)), random_state=42)
+            sample_scores = scorer.score_from_features(sample_df)
+            logger.info("[STEP 9d] Self-test on 5 customers:\n%s",
+                        sample_scores[["CustomerID", "RecommendedAction", "HazardScore",
+                                       "EVI", "Priority"]].to_string(index=False))
+        except Exception as exc:
+            logger.warning(f"[STEP 9d] Inference pipeline save failed: {exc}")
+    else:
+        logger.info("[STEP 9d] Inference module not available — skipping.")
+
+    # =============================================================================
+    # STEP 10: Level 1 + Level 2 Enhancement Modules
+    # =============================================================================
+
+    # ── STEP 10a: Comprehensive Sensitivity Analysis (Level 1) ────────────────
+    if _HAS_SENSITIVITY:
+        logger.info("\n[STEP 10a] Running Comprehensive Sensitivity Analysis...")
+        try:
+            _policy_cfg_sa = load_config_with_overrides(args.dataset).get("policy", {})
+            sens_out = run_sensitivity_analysis(
+                df_decisions=weibull_decisions,
+                save_dir=os.path.join(FIGURES_DIR, "sensitivity"),
+                dataset_label=get_dataset(args.dataset).display,
+                base_response_rate=_policy_cfg_sa.get("response_rate", 0.15),
+                base_penalty=monte_carlo_results.get("sleeping_dog_penalty", 0.20),
+                base_budget=monte_carlo_results.get("marketing_budget", 500.0),
+                base_hazard_threshold=_policy_cfg_sa.get("hazard_threshold", 0.01),
+                n_mc=300,
+            )
+            stability = sens_out["stability_df"]
+            most_sensitive = stability.iloc[0]["Parameter"] if not stability.empty else "N/A"
+            logger.info(
+                "[STEP 10a] Sensitivity analysis complete.\n"
+                "  Most sensitive parameter: %s\n%s",
+                most_sensitive,
+                stability[["Parameter", "Weibull_always_wins",
+                            "Min_efficiency_gain", "Max_efficiency_gain"]].to_string(index=False),
+            )
+            sens_out["stability_df"].to_csv(
+                os.path.join(REPORTS_DIR, "sensitivity_stability.csv"), index=False
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 10a] Sensitivity analysis failed: {exc}")
+    else:
+        logger.info("[STEP 10a] Sensitivity module not available — skipping.")
+
+    # ── STEP 10b: Temporal Cross-Validation (Level 1) ─────────────────────────
+    if _HAS_TEMPORAL_CV:
+        logger.info("\n[STEP 10b] Running Temporal Cross-Validation (4 expanding folds)...")
+        try:
+            tcv_out = temporal_cross_validate(
+                customer_df=customer_df,
+                active_features=active_features_waf,
+                n_folds=4,
+                random_cv_cindex=run_metrics.get("c_index_oos"),
+                random_cv_std=None,
+                save_dir=os.path.join(FIGURES_DIR, "temporal_cv"),
+                dataset_label=get_dataset(args.dataset).display,
+            )
+            tcv_summary = tcv_out["summary"]
+            logger.info(
+                "[STEP 10b] Temporal CV complete | "
+                "mean_C=%.4f +/- %.4f | all>=0.70: %s",
+                tcv_summary.get("mean_c_index_test", 0),
+                tcv_summary.get("std_c_index_test", 0),
+                tcv_summary.get("all_above_07", False),
+            )
+            tcv_out["fold_df"].to_csv(
+                os.path.join(REPORTS_DIR, "temporal_cv_folds.csv"), index=False
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 10b] Temporal CV failed: {exc}")
+    else:
+        logger.info("[STEP 10b] Temporal CV module not available — skipping.")
+
+    # ── STEP 10c: Business Metrics (Level 2) ──────────────────────────────────
+    if _HAS_BIZ_METRICS and monte_carlo_results:
+        logger.info("\n[STEP 10c] Computing Business Metrics (CAC, ROI, Payback, Cohort)...")
+        try:
+            advsim_ref = None
+            if _HAS_ADVANCED_SIM:
+                try:
+                    advsim_ref = run_advanced_simulation(
+                        waf=waf, df_scaled=df_scaled_waf,
+                        customer_df=customer_df,
+                        predicted_clv=predicted_clv_all,
+                        n_periods=6, n_mc=100,
+                        base_budget=monte_carlo_results.get("marketing_budget", 500.0),
+                        dataset_label=get_dataset(args.dataset).display,
+                    )
+                except Exception:
+                    pass
+
+            biz_out = compute_business_metrics(
+                weibull_decisions=weibull_decisions,
+                customer_df=customer_df,
+                mc_results=monte_carlo_results,
+                advsim_results=advsim_ref,
+                save_dir=os.path.join(FIGURES_DIR, "business"),
+                dataset_label=get_dataset(args.dataset).display,
+                p_response=_policy_cfg_sa.get("response_rate", 0.15) if '_policy_cfg_sa' in dir() else 0.15,
+            )
+            m = biz_out["metrics"]
+            logger.info(
+                "[STEP 10c] Business Metrics:\n"
+                "  CAC_retention=%.2f MU | ROI=%.1f%% | "
+                "Payback=M%s | Retention_lift=+%.1f pp",
+                m["CAC"]["CAC_retention"],
+                m["ROI"]["ROI_pct"],
+                m["Payback"].get("payback_period_median_months", "N/A"),
+                m["Retention"]["retention_lift_pp"],
+            )
+            biz_out["metrics_df"].to_csv(
+                os.path.join(REPORTS_DIR, "business_metrics.csv"), index=False
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 10c] Business metrics failed: {exc}")
+    else:
+        logger.info("[STEP 10c] Business metrics skipped.")
+
+    # ── STEP 10d: Production Simulation 12-month (Level 2) ────────────────────
+    if _HAS_PROD_SIM:
+        logger.info("\n[STEP 10d] Running Production Simulation (12-month rolling)...")
+        try:
+            prod_sim = ProductionSimulator(
+                waf=waf,
+                df_scaled=df_scaled_waf,
+                customer_df=customer_df,
+                predicted_clv=predicted_clv_all,
+                n_months=12,
+                cycle_days=30,
+                cooldown_days=60,
+                budget_per_cycle=monte_carlo_results.get("marketing_budget", 500.0),
+                n_mc=100,
+            )
+            prod_history = prod_sim.run()
+            prod_summary = prod_sim.get_summary(prod_history)
+            logger.info(
+                "[STEP 10d] Production sim complete | "
+                "final_active=%.1f%% | cumulative_profit=%.0f MU | "
+                "avg_contacts/cycle=%.1f",
+                prod_summary["final_active_rate_pct"],
+                prod_summary["total_cumulative_profit"],
+                prod_summary["avg_contacts_per_cycle"],
+            )
+            prod_sim.plot_rolling_metrics(
+                prod_history,
+                save_path=os.path.join(FIGURES_DIR, "production_rolling_metrics.png"),
+                dataset_label=get_dataset(args.dataset).display,
+            )
+            prod_history.to_csv(
+                os.path.join(REPORTS_DIR, "production_sim_history.csv"), index=False
+            )
+        except Exception as exc:
+            logger.warning(f"[STEP 10d] Production simulation failed: {exc}")
+    else:
+        logger.info("[STEP 10d] Production simulation module not available — skipping.")
 
     # ── E1: Sleeping Dog Penalty Sensitivity Analysis ────────────────────────────
     if getattr(args, 'sensitivity_penalty', False):
