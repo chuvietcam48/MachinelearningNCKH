@@ -394,12 +394,29 @@ def main():
 
     # ── STEP 2c: Stratified 80/20 Customer-Level Holdout ──────────────────────
     logger.info("\n[STEP 2c] Stratified 80/20 customer-level holdout split (stratify=E)...")
-    customer_df_train, customer_df_test = train_test_split(
-        customer_df,
-        test_size=0.2,
-        random_state=42,
-        stratify=customer_df["E"],
-    )
+    
+    # For degenerate datasets (e.g. X5 with τ=14, only 1 churn event),
+    # skip stratification to avoid sklearn error
+    n_churn = customer_df["E"].sum()
+    if n_churn < 2:
+        logger.warning(
+            f"[X5 DEGENERATE] Only {n_churn} churn event detected. "
+            f"Skipping stratification (would fail StratifiedKFold). "
+            f"Using random 80/20 split instead."
+        )
+        customer_df_train, customer_df_test = train_test_split(
+            customer_df,
+            test_size=0.2,
+            random_state=42,
+            stratify=None,
+        )
+    else:
+        customer_df_train, customer_df_test = train_test_split(
+            customer_df,
+            test_size=0.2,
+            random_state=42,
+            stratify=customer_df["E"],
+        )
     logger.info(
         f"  Train: {len(customer_df_train):,} customers | "
         f"churn rate: {customer_df_train['E'].mean()*100:.1f}%"
@@ -421,7 +438,20 @@ def main():
     _t4_start = _time.perf_counter()  # E7: runtime benchmark
 
     waf, df_scaled_train_waf, preprocessor_waf, active_features_waf = train_weibull_aft(customer_df_train)
-    cph, df_scaled_train_cph, preprocessor_cph, active_features_cph = train_coxph(customer_df_train)
+    
+    # ── CoxPH: Try to fit, but skip if dataset is too degenerate (X5 RCT) ──────
+    try:
+        cph, df_scaled_train_cph, preprocessor_cph, active_features_cph = train_coxph(customer_df_train)
+    except Exception as e:
+        logger.warning(
+            f"[CoxPH] Failed to converge (likely degenerate dataset like X5 RCT): {e}. "
+            f"Skipping CoxPH — will use Weibull AFT only."
+        )
+        cph = None
+        df_scaled_train_cph = None
+        preprocessor_cph = None
+        active_features_cph = []
+    
     lr, lr_pipeline, lr_cv_metrics = train_logistic(customer_df_train)
 
     # ── STEP 4b-CLV: Train CLV Regressor on train split ───────────────────────
@@ -490,7 +520,9 @@ def main():
 
     # OOS (test) scaled frames
     df_scaled_test_waf = _apply_preprocessor(preprocessor_waf, customer_df_test, active_features_waf, input_features_waf)
-    df_scaled_test_cph = _apply_preprocessor(preprocessor_cph, customer_df_test, active_features_cph, input_features_cph)
+    df_scaled_test_cph = None
+    if cph is not None:
+        df_scaled_test_cph = _apply_preprocessor(preprocessor_cph, customer_df_test, active_features_cph, input_features_cph)
 
     # All-customer scaled frame (for intervention policy + dashboard artifacts)
     df_scaled_waf = _apply_preprocessor(preprocessor_waf, customer_df, active_features_waf, input_features_waf)
@@ -632,7 +664,7 @@ def main():
     logger.info("\n[STEP 6] Evaluating models...")
 
     c_index_weibull  = compute_c_index(waf, df_scaled_train_waf, model_name="WeibullAFT")
-    c_index_cox      = compute_c_index(cph, df_scaled_train_cph, model_name="CoxPH")
+    c_index_cox      = compute_c_index(cph, df_scaled_train_cph, model_name="CoxPH") if cph is not None else np.nan
     ibs              = compute_integrated_brier_score(waf, df_scaled_train_waf)
     auc_df           = compute_time_dependent_auc(waf, df_scaled_train_waf)
     outreach_metrics = compute_outreach_efficiency(weibull_decisions, rfm_decisions)
@@ -688,22 +720,26 @@ def main():
             )
 
         # ── CoxPH OOS C-index ─────────────────────────────────────────────────
-        oos_c_cph = cph.score(df_scaled_test_cph, scoring_method="concordance_index")
+        if cph is not None:
+            oos_c_cph = cph.score(df_scaled_test_cph, scoring_method="concordance_index")
 
-        logger.info("  [CoxPH]")
-        logger.info(f"    C-index In-Sample (train) : {c_index_cox:.4f}")
-        logger.info(f"    C-index OOS       (test)  : {oos_c_cph:.4f}")
-        gap_cph = c_index_cox - oos_c_cph
-        if gap_cph > 0.05:
-            logger.warning(
-                f"    [OOS WARNING] Gap = {gap_cph:.4f} > 0.05 "
-                f"-- possible overfitting."
-            )
+            logger.info("  [CoxPH]")
+            logger.info(f"    C-index In-Sample (train) : {c_index_cox:.4f}")
+            logger.info(f"    C-index OOS       (test)  : {oos_c_cph:.4f}")
+            gap_cph = c_index_cox - oos_c_cph
+            if gap_cph > 0.05:
+                logger.warning(
+                    f"    [OOS WARNING] Gap = {gap_cph:.4f} > 0.05 "
+                    f"-- possible overfitting."
+                )
+            else:
+                logger.info(
+                    f"    [OOS OK] Gap = {gap_cph:.4f} <= 0.05 "
+                    f"-- generalisation is healthy."
+                )
         else:
-            logger.info(
-                f"    [OOS OK] Gap = {gap_cph:.4f} <= 0.05 "
-                f"-- generalisation is healthy."
-            )
+            logger.warning("  [CoxPH] Skipped (model not fitted due to convergence failure).")
+            oos_c_cph = np.nan
 
         # ── OOS Integrated Brier Score (Weibull AFT on test set) ──────────────
         logger.info("  Computing OOS Integrated Brier Score (WeibullAFT on test set)...")

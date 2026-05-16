@@ -62,10 +62,16 @@ def load_config_with_overrides(dataset: str) -> dict:
     import yaml
     import copy
 
-    cfg_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "config", "simulation_params.yaml"
-    )
+    # Use relative path from current working directory (more robust than absolute paths)
+    cfg_path = "config/simulation_params.yaml"
+    
+    # Fallback to absolute path if relative doesn't exist
+    if not os.path.exists(cfg_path):
+        cfg_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "config", "simulation_params.yaml"
+        )
+    
     with open(cfg_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
