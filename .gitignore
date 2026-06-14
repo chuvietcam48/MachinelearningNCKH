@@ -50,3 +50,10 @@ mlflow.db
 # Stale pipeline logs / outputs at root
 run_output*.txt
 comparison_report.csv
+
+# Large model and data files (Github limits to 100MB)
+*.state_dict
+*.json.gz
+*.config
+*.tokenizer
+data/amazon_reviews/

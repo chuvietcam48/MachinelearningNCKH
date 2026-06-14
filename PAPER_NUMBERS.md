@@ -156,9 +156,9 @@ EVI(i)    = p_response × CLV_i × [1 − S(t|x_i)] − C_contact
 
 | Dataset | θ₁ (mu_1 median) | θ₀ (mu_0 median) | Persuadables | Sure Things | Sleeping Dogs | Lost Causes |
 |---------|-----------------|-----------------|-------------|-------------|---------------|-------------|
-| UCI | 477 MU | 847 MU | **40.5%** | 9.4% | **40.6%** | 9.5% |
-| TaFeng | 6,011 MU | 2,425 MU | **8.9%** | 40.9% | **9.1%** | 41.1% |
-| CDNOW | 218 MU | 33 MU | **0.0%** | 2.8% | **47.0%** | 50.2% |
+| UCI | 477 MU | 847 MU | **40.6%** | 9.4% | **39.4%** | 10.6% |
+| TaFeng | 6,011 MU | 2,425 MU | **10.4%** | 38.9% | **7.2%** | 43.5% |
+| CDNOW | 218 MU | 33 MU | **0.0%** | 0.2% | **33.4%** | 66.4% |
 
 **Quadrant definition (continuous outcomes):**
 ```
@@ -202,7 +202,7 @@ Lost Causes  : mu_1 ≤ θ₁  AND  mu_0 ≤ θ₀  → don't respond regardless
 | Response Rate | 5%–30% | [1.011, 1.055] | ✓ | #3 |
 | Marketing Budget | 100–2,000 MU | [1.027, 1.042] | ✓ | #4 least sensitive |
 
-**2D Interaction (Response Rate × Penalty):** Weibull wins in **all 24 combinations** of [0.05, 0.10, 0.15, 0.20, 0.25, 0.30] × [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]
+**2D Interaction (Response Rate × Penalty):** Weibull wins in **all 36 combinations** of [0.05, 0.10, 0.15, 0.20, 0.25, 0.30] × [0.05, 0.10, 0.20, 0.30, 0.40, 0.50]
 
 > All Coefficient of Variation (CV) values < 10% → highly stable conclusions.
 
@@ -399,7 +399,7 @@ CAC reduction:     −30.4% vs RFM baseline
 DR-Learner ATE:    +1.558 log-MU [1.469, 1.654] (95% CI all positive)
 X5 RCT Qini:       +0.030 (positive = confirmed causal signal)
 Rosenbaum Gamma*:  1.0 (honest — observational limitation)
-Sensitivity:       Weibull wins ALL 28 parameter combinations
+Sensitivity:       Weibull wins ALL 36 parameter combinations
 
 Uplift Qini (v2, clean features, dual-median, int32 fix):
   UCI=−0.072, TaFeng=−0.316, CDNOW=−0.618, X5 RCT=+0.030

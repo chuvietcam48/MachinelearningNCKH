@@ -1,0 +1,52 @@
+model: <class 'pyabsa.tasks.AspectTermExtraction.models.__lcf__.fast_lcf_atepc.FAST_LCF_ATEPC'>
+optimizer: adamw
+learning_rate: 2e-05
+cache_dataset: True
+warmup_step: -1
+use_bert_spc: True
+max_seq_len: 128
+SRD: 3
+use_syntax_based_SRD: False
+lcf: cdw
+dropout: 0.5
+l2reg: 1e-08
+num_epoch: 20
+batch_size: 16
+seed: 42
+output_dim: 3
+log_step: 5595
+patience: 99999
+gradient_accumulation_steps: 1
+dynamic_truncate: True
+evaluate_begin: 0
+use_amp: False
+cross_validate_fold: -1
+pretrained_bert: microsoft/mdeberta-v3-base
+dataset: ['113.Laptop14', '114.Restaurant14', '116.Restaurant16', '101.ACL_Twitter', '109.MAMS', '117.Television', '118.TShirt', '119.Yelp', '107.Phone', '103.Camera', '106.Notebook', '104.Car', '105.MOOC', '129.Kaggle', '120.SemEval2016Task5', '121.MOOC_En', '130.Chinese_Zhang']
+from_checkpoint: 
+checkpoint_save_mode: 1
+auto_device: True
+path_to_save: None
+load_aug: False
+device: cuda:1
+device_name: NVIDIA GeForce RTX 3090
+model_name: fast_lcf_atepc
+hidden_dim: 768
+PyABSAVersion: 2.1.5
+TransformersVersion: 4.22.1
+TorchVersion: 1.13.0a0+git2e883d4+cuda11.2
+dataset_name: Multilingual
+save_mode: 1
+logger: <Logger fast_lcf_atepc (INFO)>
+task_code: ATEPC
+task_name: Aspect Term Extraction and Polarity Classification
+dataset_file: {'train': ['integrated_datasets/atepc_datasets/102.Chinese/104.car/car.train.txt.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/126.russian/restaurants_train_russian.xml.dat.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/113.laptop14/Laptops_Train.xml.seg.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/114.restaurant14/Restaurants_Train.xml.seg.atepc', 'integrated_datasets/atepc_datasets/129.Kaggle/train.csv.dat.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/107.phone/phone.train.txt.atepc', 'integrated_datasets/atepc_datasets/118.TShirt/Menstshirt_Train.xml.seg.atepc', 'integrated_datasets/atepc_datasets/130.Chinese_Zhang/train.txt.dat.apc.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/123.dutch/restaurants_train_dutch.xml.dat.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/116.restaurant16/restaurant_train.raw.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/124.english/restaurants_train_english.xml.dat.atepc', 'integrated_datasets/atepc_datasets/101.ACL_Twitter/acl-14-short-data/train.raw.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/105.mooc/mooc.train.txt.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/127.spanish/restaurants_train_spanish.xml.dat.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/106.notebook/notebook.train.txt.atepc', 'integrated_datasets/atepc_datasets/109.MAMS/train.xml.dat.atepc', 'integrated_datasets/atepc_datasets/121.MOOC_En/mooc-en.train.txt.atepc', 'integrated_datasets/atepc_datasets/119.Yelp/yelp.train.txt.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/125.french/restaurants_train_french.xml.dat.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/128.turkish/restaurants_train_turkish.xml.dat.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/122.arabic/hotels_train_arabic.xml.dat.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/103.camera/camera.train.txt.atepc', 'integrated_datasets/atepc_datasets/117.Television/Television_Train.xml.seg.atepc'], 'test': ['integrated_datasets/atepc_datasets/120.SemEval2016Task5/125.french/restaurants_test_french.xml.dat.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/107.phone/phone.test.txt.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/114.restaurant14/Restaurants_Test_Gold.xml.seg.atepc', 'integrated_datasets/atepc_datasets/101.ACL_Twitter/acl-14-short-data/test.raw.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/113.laptop14/Laptops_Test_Gold.xml.seg.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/106.notebook/notebook.test.txt.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/103.camera/camera.test.txt.atepc', 'integrated_datasets/atepc_datasets/109.MAMS/test.xml.dat.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/105.mooc/mooc.test.txt.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/123.dutch/restaurants_test_dutch.xml.dat.atepc', 'integrated_datasets/atepc_datasets/130.Chinese_Zhang/test.txt.dat.apc.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/127.spanish/restaurants_test_spanish.xml.dat.atepc', 'integrated_datasets/atepc_datasets/117.Television/Television_Test_Gold.xml.seg.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/128.turkish/restaurants_test_turkish.xml.dat.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/124.english/restaurants_test_english.xml.dat.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/126.russian/restaurants_test_russian.xml.dat.atepc', 'integrated_datasets/atepc_datasets/120.SemEval2016Task5/122.arabic/hotels_test_arabic.xml.dat.atepc', 'integrated_datasets/atepc_datasets/119.Yelp/yelp.test.txt.atepc', 'integrated_datasets/atepc_datasets/121.MOOC_En/mooc-en.test.txt.atepc', 'integrated_datasets/atepc_datasets/110.SemEval/116.restaurant16/restaurant_test.raw.atepc', 'integrated_datasets/atepc_datasets/102.Chinese/104.car/car.test.txt.atepc', 'integrated_datasets/atepc_datasets/129.Kaggle/test.csv.dat.atepc', 'integrated_datasets/atepc_datasets/118.TShirt/Menstshirt_Test_Gold.xml.seg.atepc'], 'valid': ['integrated_datasets/atepc_datasets/130.Chinese_Zhang/dev.txt.dat.apc.atepc', 'integrated_datasets/atepc_datasets/109.MAMS/valid.xml.dat.atepc']}
+model_path_to_save: checkpoints
+spacy_model: en_core_web_sm
+IOB_label_to_index: {'B-ASP': 1, 'I-ASP': 2, 'O': 3, '[CLS]': 4, '[SEP]': 5}
+index_to_label: {0: 'Negative', 1: 'Neutral', 2: 'Positive'}
+label_list: ['B-ASP', 'I-ASP', 'O', '[CLS]', '[SEP]']
+num_labels: 6
+sep_indices: 2
+max_test_metrics: {'max_apc_test_acc': 85.1, 'max_apc_test_f1': 80.2, 'max_ate_test_f1': 76.45}
+metrics_of_this_checkpoint: {'apc_acc': 85.1, 'apc_f1': 80.2, 'ate_f1': 76.45}

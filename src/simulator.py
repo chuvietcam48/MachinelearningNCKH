@@ -304,15 +304,28 @@ def run_monte_carlo_simulation(
         rfm_profits[i]        = float(np.sum(r_profit_persuadable + r_profit_sleeping_dog))
         n_rfm_funded_arr[i]   = n_r_funded
 
-        # ── 5. LR+EVI POLICY — precision targeting like Weibull, no Sleeping Dog ─
-        # LR gates on P(churn)>0.5 AND lr_evi>0, so no annoyed-customer penalty.
+        # ── 5. LR+EVI POLICY — Exposed to Sleeping Dog Penalty ───────────────
+        # LR is a binary classifier, not a survival model. It may flag low-hazard
+        # customers as "high churn probability". If we contact them, they incur
+        # the Sleeping Dog penalty.
         if _has_lr:
             n_l_funded  = min(n_lr_pool, max_contacts)
             l_targets   = lr_sort[:n_l_funded]
-            # EVI drives profit: predicted_clv * p_response * (implied churn) - cost
-            # Using lr_evi directly as the expected marginal gain pre-cost, then subtract cost
-            l_profits_per = lr_clv_col[l_targets] * sim_p_resp - sim_cost
-            lr_profits[i] = float(np.sum(l_profits_per))
+            
+            # True hazard from Weibull defines if they are actually persuadable
+            l_persuadable = hazard[l_targets] > _HAZARD_THRESHOLD
+            
+            l_profit_persuadable = np.where(
+                l_persuadable,
+                monetary[l_targets] * sim_p_resp - sim_cost,
+                0.0
+            )
+            l_profit_sleeping_dog = np.where(
+                ~l_persuadable,
+                -(monetary[l_targets] * sleeping_dog_penalty) - sim_cost,
+                0.0
+            )
+            lr_profits[i] = float(np.sum(l_profit_persuadable + l_profit_sleeping_dog))
 
         # ── 6. Efficiency gain: (Weibull - RFM) / max(|RFM|, 1) ─────────────
         denom = max(abs(rfm_profits[i]), 1.0)

@@ -337,15 +337,22 @@ def _fit_t_learner(df: pd.DataFrame, feature_cols: list) -> pd.DataFrame:
     is_binary_y = set(np.unique(y)).issubset({0, 1, 0.0, 1.0})
     if is_binary_y:
         theta_1 = theta_0 = _RESPONSE_THR
+        tau_thr = 0.0
     else:
         theta_1 = float(np.median(mu1_all))
         theta_0 = float(np.median(mu0_all))
+        tau_thr = float(np.percentile(tau_hat, 75))
+        if tau_thr <= 0:
+            tau_thr = 0.0001
+
+    df.attrs["is_binary_y"]          = is_binary_y
+    df.attrs["tau_thr"]              = tau_thr
     df.attrs["response_threshold"]   = theta_1   # backward compat
     df.attrs["response_threshold_1"] = theta_1
     df.attrs["response_threshold_0"] = theta_0
     logger.info(
-        "[Uplift] Dual thresholds: theta_1=%.4f, theta_0=%.4f (binary_y=%s)",
-        theta_1, theta_0, is_binary_y,
+        "[Uplift] Dual thresholds: theta_1=%.4f, theta_0=%.4f (binary_y=%s, tau_thr=%.4f)",
+        theta_1, theta_0, is_binary_y, tau_thr,
     )
 
     # Attach trained model objects so callers (e.g. UpliftShapExplainer) can use them
@@ -364,34 +371,37 @@ def _assign_uplift_segment(
     row: pd.Series,
     theta_1: float = _RESPONSE_THR,
     theta_0: float = _RESPONSE_THR,
+    is_binary_y: bool = True,
+    tau_thr: float = 0.0,
 ) -> str:
     """
     Assign Radcliffe & Surry (1999) uplift quadrant.
-
-    Full 2×2 definition using SEPARATE thresholds for mu_1 and mu_0:
-      theta_1 = median(mu_1_predicted)  — above-median treatment outcome
-      theta_0 = median(mu_0_predicted)  — above-median control outcome
-
-    Dual-median approach guarantees ~25% in each quadrant regardless of
-    outcome scale (binary 0/1 OR continuous Monetary).
-
-    Quadrant definitions:
-      Persuadables : mu_1 > θ₁  AND  mu_0 ≤ θ₀  (unique benefit from treatment)
-      Sure Things  : mu_1 > θ₁  AND  mu_0 > θ₀  (respond regardless)
-      Sleeping Dogs: mu_1 ≤ θ₁  AND  mu_0 > θ₀  (harmed by treatment)
-      Lost Causes  : mu_1 ≤ θ₁  AND  mu_0 ≤ θ₀  (don't respond regardless)
+    For binary outcomes, uses standard 2x2 response thresholds.
+    For continuous outcomes (Monetary), uses Uplift (tau_hat) directly to find
+    Persuadables (top 25% uplift) and Sleeping Dogs (negative uplift).
     """
-    r1 = row["mu_1"] > theta_1   # above-median outcome if treated
-    r0 = row["mu_0"] > theta_0   # above-median outcome if not treated
-
-    if r1 and not r0:
-        return "Persuadables"
-    elif r1 and r0:
-        return "Sure Things"
-    elif not r1 and r0:
-        return "Sleeping Dogs"
+    if is_binary_y:
+        r1 = row["mu_1"] > theta_1
+        r0 = row["mu_0"] > theta_0
+        if r1 and not r0:
+            return "Persuadables"
+        elif r1 and r0:
+            return "Sure Things"
+        elif not r1 and r0:
+            return "Sleeping Dogs"
+        else:
+            return "Lost Causes"
     else:
-        return "Lost Causes"
+        tau = row.get("tau_hat", row["mu_1"] - row["mu_0"])
+        mu0 = row["mu_0"]
+        if tau < 0:
+            return "Sleeping Dogs"
+        elif tau >= tau_thr:
+            return "Persuadables"
+        elif mu0 > theta_0:
+            return "Sure Things"
+        else:
+            return "Lost Causes"
 
 
 # =============================================================================
@@ -601,12 +611,15 @@ def run_uplift_analysis(
     # 4. Segment — use dual adaptive thresholds stored by _fit_t_learner
     theta_1 = uplift_df.attrs.get("response_threshold_1", _RESPONSE_THR)
     theta_0 = uplift_df.attrs.get("response_threshold_0", _RESPONSE_THR)
+    is_binary = uplift_df.attrs.get("is_binary_y", False)
+    tau_thr = uplift_df.attrs.get("tau_thr", 0.0)
     logger.info(
-        "[Uplift] Segmenting with theta_1=%.4f, theta_0=%.4f",
-        theta_1, theta_0,
+        "[Uplift] Segmenting with theta_1=%.4f, theta_0=%.4f (is_binary=%s, tau_thr=%.4f)",
+        theta_1, theta_0, is_binary, tau_thr
     )
     uplift_df["uplift_segment"] = uplift_df.apply(
-        _assign_uplift_segment, axis=1, theta_1=theta_1, theta_0=theta_0
+        _assign_uplift_segment, axis=1, theta_1=theta_1, theta_0=theta_0,
+        is_binary_y=is_binary, tau_thr=tau_thr
     )
 
     # 5. Log segment distribution
