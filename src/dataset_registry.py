@@ -222,3 +222,34 @@ register_dataset(
     loader_fn=_load_x5,
     snapshot_fn=_default_snapshot,   # max(InvoiceDate) + 1 day
 )
+
+def _load_amazon(path: str) -> pd.DataFrame:
+    # Amazon Dataset Adapter (Schema Mapper)
+    # Reads the verified episode snapshots and standardizes the ID column.
+    
+    # Path is overridden to point to the derived artifacts for frozen execution
+    parquet_path = os.path.join(_ROOT, "data", "artifacts", "semantic_labels", "verified_episode_snapshots_h270_v1.parquet")
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+        # Standardize ID column
+        if 'reviewerID' in df.columns:
+            df = df.rename(columns={'reviewerID': 'CustomerID'})
+        return df
+    else:
+        logger.warning(f"Amazon episode data not found at {parquet_path}")
+        return pd.DataFrame(columns=['CustomerID', 'episode_start', 'episode_endpoint'])
+
+def _snapshot_amazon(df: pd.DataFrame) -> pd.Timestamp:
+    if 'episode_start' in df.columns:
+        snap = df["episode_start"].max() + pd.Timedelta(days=1)
+        logger.info(f"Snapshot date (Amazon): {snap.date()}")
+        return snap
+    return pd.Timestamp("today")
+
+register_dataset(
+    name="amazon",
+    display="Amazon Semantic Case Study",
+    data_path="", # Overridden internally
+    loader_fn=_load_amazon,
+    snapshot_fn=_snapshot_amazon,
+)

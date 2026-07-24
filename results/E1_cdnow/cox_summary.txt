@@ -1,0 +1,30 @@
+<lifelines.CoxPHFitter: fitted with 18802 total observations, 2614 right-censored observations>
+             duration col = 'T_Duration'
+                event col = 'E_Event'
+                penalizer = 0.1
+                 l1 ratio = 0.0
+      baseline estimation = breslow
+   number of observations = 18802
+number of events observed = 16188
+   partial log-likelihood = -137753.10
+         time fit was run = 2026-07-24 15:44:36 UTC
+
+---
+                   coef exp(coef)  se(coef)      z      p  -log2(p)
+covariate                                                          
+Recency            0.00      1.00      0.00  32.64 <0.005    773.69
+Frequency         -0.08      0.92      0.00 -21.05 <0.005    324.47
+Monetary          -0.00      1.00      0.00  -8.21 <0.005     52.04
+InterPurchaseTime -0.00      1.00      0.00 -12.57 <0.005    118.00
+GapDeviation      -0.00      1.00      0.00 -20.58 <0.005    310.33
+SinglePurchase    -3.15      0.04      0.03 -95.72 <0.005       inf
+---
+Concordance = 0.67
+Partial AIC = 275518.21
+log-likelihood ratio test = 9840.50 on 6 df
+-log2(p) of ll-ratio test = inf
+
+
+
+AIC: 275518.21
+Concordance: 0.6708

@@ -1,30 +1,33 @@
-# Decision-Centric Customer Retention
-### *Precision Survival Analysis & Uplift Modeling for E-Commerce*
+# Universal Customer Churn Decision Framework
+### *Adaptive Survival Analysis & Semantic Extensions for E-Commerce*
 
-Implementation of a **Weibull AFT model** to predict *when* customers will churn — not just *if* — enabling proactive, perfectly-timed re-engagement interventions.
+Implementation of a **Universal Customer Churn Decision Framework** that predicts *when* customers will churn and computes the optimal intervention policy. The framework operates on standard behavioral signals by default but seamlessly integrates an optional **Semantic Extension** to process natural language feedback into predictive risk trajectories.
 
 ---
 
 ## 🚀 Overview
-Most churn models ask "Will this customer leave next month?". This framework asks **"When will this customer leave, and what is the optimal time to intervene?"**
+This framework elevates traditional churn prediction by answering three questions: **When will this customer leave? Why are they leaving? What is the optimal retention intervention?**
 
 Key capabilities:
-- **Survival Analysis**: Weibull AFT model (C-index > 0.76) predicts exact churn timing.
-- **Uplift Modeling**: Uses T-Learner to identify "Persuadables" (customers who respond *only* if treated).
-- **Decision Engine**: Calculates Expected Value of Intervention (EVI) to maximize ROI.
-- **Interactive Dashboard**: Real-time risk profiling & portfolio management.
+- **Universal Architecture**: Agnostic dataset adapters compatible with diverse transactional formats (e.g., UCI, CDNOW, TaFeng, X5 Retail, Amazon).
+- **Behavioral & Survival Engine**: Vectorized RFM extraction and precision CoxPH/Weibull survival models.
+- **Optional Semantic Extension**: Extracts trajectory-aware semantic signals (e.g., aspect conflict, negative streak) when textual reviews are available.
+- **Adaptive Decision Support**: Generates expected-utility intervention policies dynamically routed by semantic risk attribution.
 
 ---
 
-## ✨ Features
-- **Precision Targeting**: Intervene only when hazard is high AND projected ROI is positive.
-- **Explainable AI**: SHAP values explain *why* a customer is at risk.
-- **Multi-Dataset Support**: UCI Online Retail, Ta Feng Grocery, and CDNOW datasets.
-- **Cross-Validation**: Stratified K-Fold CV for survival model robustness.
-- **Experiment Tracking**: MLflow integration for model metrics & artifact logging.
-- **Comparison Reports**: Auto-generate cross-dataset performance comparisons.
-- **Dockerized**: Production-ready container support.
-- **Configurable**: Business rules centralized in YAML Configuration.
+## 📜 Core Academic Contributions
+1. **Universal Customer Churn Decision Framework:** A dataset-agnostic churn decision support architecture that generalizes across varying data environments.
+2. **Behavior Module:** A robust baseline engine capturing recency, frequency, and monetary inter-purchase dynamics.
+3. **Optional Semantic Extension (Validated via Amazon Case Study):** A novel state-persistence semantic trajectory module that extracts granular aspect-aware dissatisfaction patterns rather than binary sentiment.
+4. **Adaptive Decision Support Engine:** A policy simulator that dynamically routes customers to tailored interventions (e.g., Logistics Recovery vs. Price Discount) depending on the presence of semantic attribution vectors.
+5. **Coverage-Aware Evaluation Protocol:** A rigorous multidimensional benchmarking suite proving that the framework achieves maximum information gain when semantic data is present, while gracefully degrading to robust behavioral performance otherwise.
+
+### 🗺️ The Experimental Protocol
+The framework's theoretical contributions are empirically validated through a rigorous pipeline:
+- **Generalizability Test**: Evaluating the Behavioral Engine across four heterogeneous datasets (CDNOW, TaFeng, X5 Retail, UCI).
+- **Semantic Validation Case**: Evaluating the Optional Semantic Module on the Amazon Review dataset to compute Likelihood Ratio Tests (LRT) and bootstrapped C-index Information Gain.
+- **Sensitivity & Robustness**: Validating model stability across varying penalizers, intervention costs, and missing semantic coverage thresholds.
 
 ---
 
@@ -59,37 +62,20 @@ pip install -r requirements-dev.txt
 
 ## 🚦 Usage
 
-### Run Pipeline
+### Quick Start
 ```bash
-# Minimal run (fastest, ~2 mins)
-python main.py --no-shap --no-mlflow
+# Run Universal Framework on standard behavioral dataset
+python run_framework.py --dataset cdnow
 
-# Full run with SHAP analysis
-python main.py
-
-# Include Uplift Modeling (T-Learner)
-python main.py --uplift
-
-# Run on different datasets
-python main.py --dataset cdnow --tau 90
-python main.py --dataset tafeng --tau 60
-
-# Enable Cross-Validation (5-fold)
-python main.py --cv
-
-# Full run with all features
-python main.py --dataset uci --tau 90 --cv --uplift
+# Run Universal Framework with Semantic Extension (Validation Case)
+python run_framework.py --dataset amazon --enable-semantic
 ```
 
 ### CLI Flags
-| Flag | Default | Description |
-|---|---|---|
-| `--dataset` | `uci` | Dataset to use: `uci`, `tafeng`, or `cdnow` |
-| `--tau` | `90` | Churn threshold in days |
-| `--cv` | off | Enable 5-fold stratified cross-validation |
-| `--uplift` | off | Enable T-Learner uplift modeling |
-| `--no-shap` | off | Skip SHAP computation (faster) |
-| `--no-mlflow` | off | Disable MLflow experiment tracking |
+| Flag | Description |
+|---|---|
+| `--dataset` | Target dataset (`cdnow`, `amazon`, `tafeng`, `x5retail`, `uci`) |
+| `--enable-semantic` | Activate optional Semantic Extension Module |
 
 ### Launch Dashboard
 Start the interactive Streamlit app:

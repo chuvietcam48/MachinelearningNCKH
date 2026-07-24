@@ -1,0 +1,40 @@
+======================================================================
+NaN DIAGNOSTIC REPORT — Amazon Semantic Pipeline
+======================================================================
+
+[1] Raw data loaded: 1733777 rows, 13 columns
+    NaN in raw: 2335276 total
+
+[2] Behavior features: (1733777, 19)
+    ⚠️ NaN in behavior features:
+       historical_mean_rating: 1177449 NaN (67.9%)
+       next_episode_start: 1157827 NaN (66.8%)
+
+[3] Semantic raw loaded: (1733777, 24)
+    ⚠️ NaN in semantic raw:
+       historical_mean_rating: 1177449 NaN (67.9%)
+       next_episode_start: 1157827 NaN (66.8%)
+
+[4] Semantic features: (1733777, 65)
+    ⚠️ NaN in semantic features:
+       historical_mean_rating: 1177449 NaN (67.9%)
+       next_episode_start: 1157827 NaN (66.8%)
+
+[5] Fused master: (1733777, 71)
+
+[6] Train set for CoxPH: (1387022, 63)
+
+======================================================================
+DIAGNOSIS SUMMARY
+======================================================================
+
+⚠️ TOTAL NaN VALUES IN TRAIN SET: 941911
+   Affected columns: 1
+
+   Column-level breakdown:
+   - historical_mean_rating: 941911 NaN (67.9%)
+
+   Rows with at least one NaN: 941911 (67.9%)
+
+   ORIGIN ANALYSIS:
+   🔴 Behavioral NaN columns: ['historical_mean_rating']

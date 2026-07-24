@@ -82,22 +82,22 @@ class TestPersuadablesSegmentation(unittest.TestCase):
 
     def test_persuadables(self):
         from src.uplift import _assign_uplift_segment, _RESPONSE_THR
-        row = pd.Series({"tau_hat": 1.0, "mu_1": _RESPONSE_THR + 1.0})
+        row = pd.Series({"tau_hat": 1.0, "mu_1": _RESPONSE_THR + 1.0, "mu_0": _RESPONSE_THR - 1.0})
         self.assertEqual(_assign_uplift_segment(row), "Persuadables")
 
     def test_sure_things(self):
         from src.uplift import _assign_uplift_segment, _RESPONSE_THR
-        row = pd.Series({"tau_hat": -1.0, "mu_1": _RESPONSE_THR + 1.0})
+        row = pd.Series({"tau_hat": -1.0, "mu_1": _RESPONSE_THR + 1.0, "mu_0": _RESPONSE_THR + 1.0})
         self.assertEqual(_assign_uplift_segment(row), "Sure Things")
 
     def test_sleeping_dogs(self):
         from src.uplift import _assign_uplift_segment, _RESPONSE_THR
-        row = pd.Series({"tau_hat": 1.0, "mu_1": _RESPONSE_THR - 1.0})
+        row = pd.Series({"tau_hat": 1.0, "mu_1": _RESPONSE_THR - 1.0, "mu_0": _RESPONSE_THR + 1.0})
         self.assertEqual(_assign_uplift_segment(row), "Sleeping Dogs")
 
     def test_lost_causes(self):
         from src.uplift import _assign_uplift_segment, _RESPONSE_THR
-        row = pd.Series({"tau_hat": -1.0, "mu_1": _RESPONSE_THR - 1.0})
+        row = pd.Series({"tau_hat": -1.0, "mu_1": _RESPONSE_THR - 1.0, "mu_0": _RESPONSE_THR - 1.0})
         self.assertEqual(_assign_uplift_segment(row), "Lost Causes")
 
 

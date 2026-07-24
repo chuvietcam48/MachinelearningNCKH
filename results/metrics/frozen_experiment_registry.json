@@ -1,0 +1,14 @@
+{
+    "metadata": {
+        "pipeline_version": "v1.0.0-freeze",
+        "llm_annotation_version": "Gemini-1.5-Pro_v2.2.4_frozen",
+        "git_commit": "f56db88",
+        "execution_timestamp": "2026-07-24T00:21:30.100009"
+    },
+    "artifact_hashes": {
+        "master_test_semantic.parquet": "0fadbfe3c712d9b0c1412078561276a74b53a864ca4d4460d435c00a58a51506",
+        "prediction_model_c_semantic.parquet": "dfc1550c860c85c1ec63d3f18d9098bf8dc4a526ff8b58966dd0568416f21eb9",
+        "hazard_ratios_semantic.csv": "75c2d2968a33facec27ea0ba14d77b87b1f912036343773b6942b3add1999a9d",
+        "policy_routing_matrix.csv": "f52bc3c51b6e95b2e89b6ef169b790c493b89be5820df8a702e333e1c7bc5f54"
+    }
+}

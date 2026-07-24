@@ -1,0 +1,10 @@
+{
+  "dataset": "CDNOW",
+  "n_customers": 23502,
+  "n_train": 18802,
+  "n_test": 4700,
+  "seed": 42,
+  "AIC": 275518.20519166894,
+  "concordance_index": 0.6708393837262143,
+  "n_features": 6
+}

@@ -12,6 +12,7 @@ build/
 # Data files (large — download separately per README instructions)
 data/raw/
 data/processed/
+data/artifacts/
 
 # Virtual environments
 venv/
@@ -41,6 +42,7 @@ Thumbs.db
 
 # Antigravity / AI assistant
 .gemini/
+api_keys.json
 
 # MLflow experiment tracking
 mlruns/
@@ -57,3 +59,4 @@ comparison_report.csv
 *.config
 *.tokenizer
 data/amazon_reviews/
+paper

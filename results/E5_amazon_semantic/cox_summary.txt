@@ -1,0 +1,84 @@
+<lifelines.CoxPHFitter: fitted with 1.38702e+06 total observations, 262982 right-censored observations>
+             duration col = 'T_Duration'
+                event col = 'E_Event'
+                penalizer = 0.1
+                 l1 ratio = 0.0
+      baseline estimation = breslow
+   number of observations = 1.38702e+06
+number of events observed = 1.12404e+06
+   partial log-likelihood = -14540384.94
+         time fit was run = 2026-07-24 16:29:00 UTC
+
+---
+                                            coef exp(coef)  se(coef)     z    p  -log2(p)
+covariate                                                                                
+episode_min_rating                          0.00      1.00      0.00  0.26 0.79      0.33
+episode_max_rating                         -0.00      1.00      0.00 -0.28 0.78      0.36
+episode_mean_rating                        -0.00      1.00      0.00 -0.01 0.99      0.01
+episode_review_count                       -0.00      1.00      0.00 -0.02 0.99      0.02
+prior_verified_episode_count               -0.00      1.00      0.00 -0.53 0.59      0.75
+prior_review_count                         -0.00      1.00      0.00 -0.12 0.90      0.15
+historical_mean_rating                     -0.00      1.00      0.00 -0.52 0.60      0.73
+days_since_previous_episode                 0.00      1.00      0.00  0.62 0.53      0.91
+customer_lifetime                          -0.00      1.00      0.00 -0.58 0.56      0.83
+review_frequency                            0.00      1.00      0.00  0.05 0.96      0.06
+recent_low_rating_count                    -0.00      1.00      0.00 -0.18 0.85      0.23
+historical_mean_rating_missing              0.00      1.00      0.00  0.49 0.62      0.69
+semantic_available                          0.00      1.00      0.07  0.01 0.99      0.02
+sentiment_positive_sentences               -0.00      1.00      0.00 -0.21 0.83      0.27
+sentiment_negative_sentences               -0.00      1.00      0.00 -0.36 0.72      0.47
+sentiment_total_sentences                  -0.00      1.00      0.00 -0.12 0.91      0.14
+sentiment_mean_compound                    -0.00      1.00      0.01 -0.02 0.99      0.02
+sentiment_mixed_intensity                  -0.00      1.00      0.01 -0.15 0.88      0.19
+sentiment_positive_ratio                    0.00      1.00      0.00  0.14 0.89      0.17
+sentiment_negative_ratio                    0.00      1.00      0.01  0.09 0.93      0.10
+Domain_Experience_Positive                  0.00      1.00      0.08  0.01 1.00      0.01
+Domain_Experience_Negative                  0.00      1.00      0.13  0.01 0.99      0.01
+Product_Performance_Usability_Positive     -0.00      1.00      0.29 -0.00 1.00      0.00
+Product_Performance_Usability_Negative     -0.00      1.00      0.23 -0.01 1.00      0.01
+Product_Condition_Quality_Positive          0.00      1.00      0.16  0.01 1.00      0.01
+Product_Condition_Quality_Negative          0.00      1.00      0.16  0.00 1.00      0.00
+Packaging_Presentation_Positive            -0.00      1.00      0.34 -0.00 1.00      0.01
+Packaging_Presentation_Negative            -0.00      1.00      0.25 -0.00 1.00      0.00
+Delivery_Fulfillment_Positive              -0.00      1.00      0.20 -0.00 1.00      0.00
+Delivery_Fulfillment_Negative              -0.00      1.00      0.44 -0.00 1.00      0.00
+Customer_Service_Returns_Positive          -0.00      1.00      0.41 -0.00 1.00      0.00
+Customer_Service_Returns_Negative          -0.00      1.00      0.97 -0.00 1.00      0.00
+Listing_Expectation_Compatibility_Positive -0.00      1.00      0.57 -0.00 1.00      0.00
+Listing_Expectation_Compatibility_Negative -0.00      1.00      0.45 -0.00 1.00      0.00
+Price_Value_Positive                       -0.00      1.00      0.25 -0.00 1.00      0.00
+Price_Value_Negative                       -0.00      1.00      0.71 -0.00 1.00      0.00
+positive_aspect_count                       0.00      1.00      0.07  0.01 1.00      0.01
+negative_aspect_count                       0.00      1.00      0.11  0.00 1.00      0.00
+net_sentiment                               0.00      1.00      0.07  0.00 1.00      0.00
+positive_minus_negative_ratio               0.00      1.00      0.08  0.00 1.00      0.00
+positive_ratio                              0.00      1.00      0.09  0.01 1.00      0.01
+negative_ratio                              0.00      1.00      0.16  0.00 1.00      0.01
+aspect_entropy                              0.00      1.00      0.19  0.00 1.00      0.01
+dominance_ratio                             0.00      1.00      0.08  0.01 0.99      0.01
+dominant_positive_aspect_id                -0.00      1.00      0.04 -0.00 1.00      0.00
+dominant_negative_aspect_id                 0.00      1.00      0.05  0.00 1.00      0.00
+sentiment_profile                           0.00      1.00      0.05  0.00 1.00      0.01
+same_aspect_conflict                       -0.00      1.00      0.18 -0.00 1.00      0.00
+cross_aspect_conflict                       0.00      1.00      0.21  0.00 1.00      0.00
+has_conflict                               -0.00      1.00      0.17 -0.00 1.00      0.00
+semantic_variance                          -0.00      1.00      0.17 -0.00 1.00      0.00
+previous_negative_count                     0.00      1.00      0.06  0.05 0.96      0.05
+previous_total_aspects                     -0.01      0.99      0.03 -0.27 0.78      0.35
+rolling_negative_ratio                      0.01      1.01      0.10  0.08 0.94      0.09
+negative_streak                             0.00      1.00      0.07  0.03 0.98      0.03
+positive_streak                            -0.01      0.99      0.04 -0.12 0.90      0.15
+last_negative_aspect_id                     0.01      1.01      0.04  0.14 0.89      0.17
+sentiment_flip_rate                         0.08      1.08      1.57  0.05 0.96      0.06
+aspect_transition_pattern                   0.00      1.00      2.24  0.00 1.00      0.00
+days_since_last_negative                   -0.00      1.00      0.00 -0.37 0.71      0.50
+---
+Concordance = 0.71
+Partial AIC = 29080889.89
+log-likelihood ratio test = 8.93 on 60 df
+-log2(p) of ll-ratio test = 0.00
+
+
+
+AIC: 29080889.89
+Concordance: 0.7147

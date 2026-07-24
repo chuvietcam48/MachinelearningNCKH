@@ -1,0 +1,10 @@
+{
+  "dataset": "Amazon",
+  "n_customers": 1733777,
+  "n_train": 1387022,
+  "n_test": 346755,
+  "seed": 42,
+  "AIC": 29080889.8870072,
+  "concordance_index": 0.7146761154340956,
+  "n_features": 60
+}

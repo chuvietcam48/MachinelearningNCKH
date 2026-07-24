@@ -67,16 +67,16 @@ def run_phase0(force=False):
 
     customer_df = pd.DataFrame({
         "CustomerID":          last2.index,
-        "T":                   T.values,
-        "E":                   E.values,
-        "Recency":             rec2.values,
-        "Frequency":           freq2.values,
-        "Monetary":            mon2.values,
-        "SinglePurchase":      (freq2 == 1).astype(int).values,
-        "InterPurchaseTime":   ipt_df["ipt"].values,
-        "GapDeviation":        ipt_df["gap_dev"].values,
-        "last_purchase_date":  last2.values,
-        "first_purchase_date": first2.values,
+        "T":                   T,
+        "E":                   E,
+        "Recency":             rec2,
+        "Frequency":           freq2,
+        "Monetary":            mon2,
+        "SinglePurchase":      (freq2 == 1).astype(int),
+        "InterPurchaseTime":   ipt_df["ipt"],
+        "GapDeviation":        ipt_df["gap_dev"],
+        "last_purchase_date":  last2,
+        "first_purchase_date": first2,
     }).reset_index(drop=True)
 
     logger.info(f"Churn E=1: {customer_df['E'].mean()*100:.1f}%  |  "

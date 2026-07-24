@@ -1,0 +1,57 @@
+# Universal Customer Churn Decision Framework Configuration
+
+# ==========================================
+# 1. Dataset Configuration (Adapter Layer)
+# ==========================================
+datasets:
+  amazon:
+    name: "Amazon Semantic Case Study"
+    has_semantic: true
+    data_path: "data/raw/amazon/reviews.parquet"
+  
+  cdnow:
+    name: "CDNOW Music"
+    has_semantic: false
+    data_path: "data/raw/cdnow.csv"
+
+  tafeng:
+    name: "Ta Feng Grocery"
+    has_semantic: false
+    data_path: "data/raw/ta_feng_all_months_merged.csv"
+    
+  x5retail:
+    name: "X5 RetailHero"
+    has_semantic: false
+    data_path: "data/raw/x5retail/purchases.csv"
+    
+  uci:
+    name: "UCI Online Retail"
+    has_semantic: false
+    data_path: "data/raw/Online Retail.xlsx"
+
+# ==========================================
+# 2. Engine Module Toggles
+# ==========================================
+modules:
+  behavior_engine: true     # Always true for all datasets
+  survival_engine: true     # Always true (CoxPH)
+  decision_engine: true     # Always true (Adaptive routing)
+
+# ==========================================
+# 3. Model Hyperparameters
+# ==========================================
+survival_model:
+  type: "coxph"
+  penalizer: 0.1
+  l1_ratio: 0.0
+
+evaluation:
+  bootstrap_iterations: 1000
+  confidence_level: 0.95
+
+# ==========================================
+# 4. Decision Support Parameters
+# ==========================================
+decision_support:
+  high_risk_threshold: 0.75
+  cost_ratio: 0.2           # Intervention Cost / Customer Lifetime Value
