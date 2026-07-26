@@ -43,7 +43,7 @@ def main():
     results_info_gain = []
     
     # Initialize Framework Engine
-    survival_engine = SurvivalEngine(penalizer=0.1)
+    survival_engine = SurvivalEngine(penalizer=0.001)
     
     for cohort_name, train_file, test_file in cohorts:
         print(f"\nProcessing Cohort: {cohort_name}")
@@ -63,11 +63,20 @@ def main():
         train_imp = pd.DataFrame(imputer.fit_transform(train_df[all_features]), columns=all_features)
         test_imp = pd.DataFrame(imputer.transform(test_df[all_features]), columns=all_features)
         
-        zero_var_cols = train_imp.columns[train_imp.var() <= 1e-9]
+        zero_var_cols = train_imp.columns[train_imp.var() <= 0.01]
         if len(zero_var_cols) > 0:
-            print(f"  Dropping {len(zero_var_cols)} zero-variance features: {list(zero_var_cols)}")
+            print(f"  Dropping {len(zero_var_cols)} low-variance features: {list(zero_var_cols)}")
             train_imp = train_imp.drop(columns=zero_var_cols)
             test_imp = test_imp.drop(columns=zero_var_cols)
+            
+        # Drop highly collinear features
+        corr = train_imp.corr().abs()
+        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+        collinear_cols = [column for column in upper.columns if any(upper[column] > 0.9)]
+        if len(collinear_cols) > 0:
+            print(f"  Dropping {len(collinear_cols)} collinear features: {collinear_cols}")
+            train_imp = train_imp.drop(columns=collinear_cols)
+            test_imp = test_imp.drop(columns=collinear_cols)
             
         remaining_features = list(train_imp.columns)
             
@@ -95,8 +104,10 @@ def main():
             train_cols = active_feats + ['E_Event', 'T_Duration']
             
             try:
+                fit_df = train_X[train_cols].copy()
+                
                 # Delegating to Framework Component
-                cph = survival_engine.fit(train_X[train_cols], duration_col='T_Duration', event_col='E_Event')
+                cph = survival_engine.fit(fit_df, duration_col='T_Duration', event_col='E_Event')
                 
                 models[name] = cph
                 log_likelihoods[name] = cph.log_likelihood_

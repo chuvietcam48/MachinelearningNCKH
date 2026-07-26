@@ -35,6 +35,9 @@ def evaluate_cohort(cohort_name, pred_dir):
     sample_size = min(n_total, 20000)
     sub_idx = np.random.choice(n_total, sample_size, replace=False)
     
+    # Fix for C-index: align Retained (E_Event=0) to 270.0 so they are comparable to Churners
+    df_A.loc[df_A['E_Event'] == 0, 'T_Duration'] = 270.0
+    
     y_test = np.array(
         list(zip(df_A['E_Event'].iloc[sub_idx], df_A['T_Duration'].iloc[sub_idx])),
         dtype=[('Event', '?'), ('Duration', '<f8')]

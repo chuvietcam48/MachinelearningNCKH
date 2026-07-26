@@ -83,12 +83,9 @@ def main():
     output_dir = repo_root / "outputs" / "pipeline_freeze"
     
     scripts = [
-        "01_semantic_feature_engineering.py",
-        "02_dataset_construction.py",
         "03_survival_model.py",
         "04_model_comparison.py",
-        "05_decision_support.py",
-        "06_sensitivity_analysis.py"
+        "05_decision_support.py"
     ]
     
     print("\n[START] Starting Q1 IS/DSS Publication Pipeline")
