@@ -66,3 +66,8 @@ paper
 *.xlsx
 *.jsonl
 archive_legacy/data/
+
+# Draft Manuscripts
+experiments/DSIT_Introduction.md
+experiments/DSIT_Methodology.md
+experiments/DSIT_Manuscript_Draft.md
