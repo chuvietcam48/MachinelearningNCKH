@@ -60,3 +60,9 @@ comparison_report.csv
 *.tokenizer
 data/amazon_reviews/
 paper
+# Data and outputs
+*.parquet
+*.csv
+*.xlsx
+*.jsonl
+archive_legacy/data/
