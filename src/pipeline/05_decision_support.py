@@ -116,6 +116,39 @@ def main():
         
     pd.DataFrame(counterfactual_results).to_csv(policy_dir / "scenario_evaluation.csv", index=False)
     
+    # 7. Decision Sensitivity Analysis
+    print("Running Decision Sensitivity Analysis...")
+    gammas = [0.3, 0.5, 0.7] # Effectiveness scale
+    cost_scalars = [0.5, 1.0, 2.0] # Base cost scale
+    value_scalars = [0.5, 1.0, 2.0] # Value scale
+    
+    sens_results = []
+    for g in gammas:
+        for cs in cost_scalars:
+            for vs in value_scalars:
+                scaled_cost = df['Intervention_Cost'] * cs
+                scaled_clv = df['CLV_Proxy'] * vs * 100 
+                success_prob = df['Success_Prob'] * g
+                
+                expected_saved_value = success_prob * scaled_clv * df['risk_score']
+                net_roi = expected_saved_value - scaled_cost
+                
+                intervene_mask = net_roi > 0
+                total_cost = scaled_cost[intervene_mask].sum()
+                total_net_roi = net_roi[intervene_mask].sum()
+                num_interventions = intervene_mask.sum()
+                
+                sens_results.append({
+                    "Gamma": g,
+                    "Cost_Scalar": cs,
+                    "Value_Scalar": vs,
+                    "Num_Interventions": num_interventions,
+                    "Total_Cost": total_cost,
+                    "Total_Net_ROI": total_net_roi
+                })
+                
+    pd.DataFrame(sens_results).to_csv(policy_dir / "sensitivity_analysis.csv", index=False)
+    
     print("\nDecision Support Engine Executed Successfully.")
     print("Files saved to results/policy/")
 

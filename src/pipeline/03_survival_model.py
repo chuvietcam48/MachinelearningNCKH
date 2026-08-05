@@ -93,6 +93,11 @@ def main():
         test_X['E_Event'] = test_df['E_Event'].values
         test_X['T_Duration'] = test_df['T_Duration'].values
         
+        if 'CustomerID' in train_df.columns:
+            train_X['CustomerID'] = train_df['CustomerID'].values
+            test_X['CustomerID'] = test_df['CustomerID'].values
+
+        
         models = {}
         log_likelihoods = {}
         aic_scores = {}
@@ -102,12 +107,16 @@ def main():
             print(f"  Training {name} ({len(active_feats)} features)...")
             
             train_cols = active_feats + ['E_Event', 'T_Duration']
+            if 'CustomerID' in train_X.columns and cohort_name == "Semantic":
+                train_cols.append('CustomerID')
             
             try:
                 fit_df = train_X[train_cols].copy()
                 
                 # Delegating to Framework Component
-                cph = survival_engine.fit(fit_df, duration_col='T_Duration', event_col='E_Event')
+                do_ph_test = (name == "Model_C" and cohort_name == "Semantic")
+                cph = survival_engine.fit(fit_df, duration_col='T_Duration', event_col='E_Event', check_ph=do_ph_test)
+
                 
                 models[name] = cph
                 log_likelihoods[name] = cph.log_likelihood_

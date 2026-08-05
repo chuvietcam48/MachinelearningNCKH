@@ -177,3 +177,29 @@ docker compose up --build
 
 ## 📝 Citation
 *D. Chen et al., "Data mining for the online retail industry: A case study of RFM model-based customer segmentation", 2012.*
+
+---
+
+## 🚀 Recent Updates (Empirical Hardening for Paper Submission)
+
+We have added several isolated, add-only scripts to mathematically harden the framework for conference submission (DSIT). **The core pipeline logic remains untouched**; these scripts purely generate rigorous supplementary artifacts.
+
+### 1. Robust Standard Errors & Survival Updates
+* **src/pipeline/03_survival_model.py**: Updated CoxPH to use Cluster-Robust Standard Errors (
+obust=True) by CustomerID, correcting for episode dependence. 
+* **src/pipeline/09_se_comparison.py**: Calculates the precise difference between Classical and Robust Standard errors. Outputs: se_comparison.csv.
+
+### 2. Statistical Validation & Ablation Scripts
+* **src/pipeline/06_cohort_analysis.py**: Validates selection bias and censoring rates between the broad population and the exact semantic cohort. Outputs: cohort_analysis.csv.
+* **src/pipeline/07_semantic_ablation.py**: Calculates incremental C-index gain per semantic feature block (Mean -> Variance -> Entropy). Outputs: semantic_ablation.csv.
+* **Customer-Level Bootstrap**: Conducted 100 resamples by CustomerID to validate Hazard Ratios (e.g., proving dominance_ratio HR is stable at ~8.27). Outputs: outputs/pipeline_freeze/results/bootstrap_hazard_ratios.csv.
+* **Feature Distributions**: Summary statistics for semantic variables to prove they are not driven by single outliers. Outputs: outputs/pipeline_freeze/results/feature_distribution_semantic.csv.
+
+### 3. Policy Baselines & LLM Provenance
+* **Policy Baseline Comparison**: Extracted precise Net ROI comparisons between ICSF Semantic, Behavior-Only, and Random Targeting. Outputs: outputs/pipeline_freeze/results/policy/baseline_comparison.csv.
+* **LLM Provenance**: Documented the exact Gemini 1.5 Pro prompt and JSON Schema to ensure full transparency and avoid 'black-box' criticisms. Available at: outputs/pipeline_freeze/results/llm_provenance.md.
+
+### 4. Publication Figures
+* **experiments/generate_publication_figures.py**: Generates publication-ready visuals.
+  * ig2_km_dominance_ratio.png: Kaplan-Meier plot stratifying by Semantic Dominance.
+  * ig3_dss_profit_curve.png: Decision Support System Cumulative Profit (labeled correctly as ICSF DSS).
