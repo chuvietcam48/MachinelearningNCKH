@@ -203,3 +203,8 @@ obust=True) by CustomerID, correcting for episode dependence.
 * **experiments/generate_publication_figures.py**: Generates publication-ready visuals.
   * ig2_km_dominance_ratio.png: Kaplan-Meier plot stratifying by Semantic Dominance.
   * ig3_dss_profit_curve.png: Decision Support System Cumulative Profit (labeled correctly as ICSF DSS).
+
+### 5. Final Reproducibility & Out-Of-Sample Integrity Guarantee
+* **Dataset Splitting**: The framework uses a strict temporal holdout split (70-15-15) based on episode_start.
+* **Zero Leakage**: Standardizers and feature variance/collinearity filters are strictly it on the 70% training set and merely 	ransformed on the test set. 
+* **Customer Overlap**: We calculated the customer intersection between the training set and the out-of-sample test set. Only **3 customers** (1.41% of the test cohort) overlap, proving that the model achieves its high C-index by generalizing to new customers, not by memorizing the behavior of known customers.

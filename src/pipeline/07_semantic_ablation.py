@@ -99,7 +99,7 @@ def main():
         dtype=[('Event', '?'), ('Duration', '<f8')]
     )
     
-    survival_engine = SurvivalEngine(penalizer=0.01)
+    survival_engine = SurvivalEngine(penalizer=0.001)
     
     results = []
     baseline_c = 0.0

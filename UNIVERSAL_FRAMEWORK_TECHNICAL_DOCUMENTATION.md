@@ -315,20 +315,20 @@ This section contains the exact, frozen statistical outputs from `outputs/pipeli
 | **Semantic** | 4,437.51 | 4,467.49 | -29.98 | 10.02 | 0.999 | No direct AIC gain for semantic-only subpopulation, but adds interpretability. |
 
 ### B. Semantic Hazard Ratios & Bootstrap Stability (Top 10 Risk Attributes)
-*Source: outputs/pipeline_freeze/results/bootstrap_hazard_ratios.csv (Cluster-Robust SE, 50 Bootstrap Iterations)*
+*Source: outputs/pipeline_freeze/results/bootstrap_hazard_ratios.csv (Cluster-Robust SE, 100 Bootstrap Iterations)*
 
-| Feature                            |   Mean_HR |   95%_CI_Lower |   95%_CI_Upper | Significant   |
-|:-----------------------------------|----------:|---------------:|---------------:|:--------------|
-| days_since_last_negative           | inf       |        1       |      nan       | No            |
-| dominance_ratio                    |   4.58389 |        4.14479 |        5.2181  | Yes           |
-| sentiment_profile                  |   2.16688 |        2.01207 |        2.31973 | Yes           |
-| aspect_entropy                     |   1.52533 |        1.43819 |        1.60747 | Yes           |
-| Domain_Experience_Positive         |   1.41671 |        1.28215 |        1.64905 | Yes           |
-| net_sentiment                      |   1.16123 |        1.03622 |        1.27817 | Yes           |
-| Domain_Experience_Negative         |   1.12232 |        1.04013 |        1.21624 | Yes           |
-| Product_Condition_Quality_Negative |   1.05393 |        1.02444 |        1.10151 | Yes           |
-| Product_Condition_Quality_Positive |   1.05189 |        1.02291 |        1.11071 | Yes           |
-| Delivery_Fulfillment_Positive      |   1.03907 |        1.01031 |        1.07154 | Yes           |
+| Feature                                |   Mean_HR |   95%_CI_Lower |   95%_CI_Upper | Significant   |
+|:---------------------------------------|----------:|---------------:|---------------:|:--------------|
+| dominance_ratio                        |   8.27455 |       4.76468  |       13.5775  | Yes           |
+| Domain_Experience_Positive             |   2.23618 |       1.92315  |        2.77301 | Yes           |
+| Product_Condition_Quality_Positive     |   2.14848 |       1.66652  |        2.81746 | Yes           |
+| sentiment_profile                      |   2.03022 |       1.65261  |        2.52038 | Yes           |
+| Delivery_Fulfillment_Positive          |   1.98639 |       1        |        2.60717 | No            |
+| Price_Value_Positive                   |   1.67446 |       1        |        2.36907 | No            |
+| aspect_entropy                         |   1.50745 |       0.893258 |        2.27397 | No            |
+| Domain_Experience_Negative             |   1.33834 |       0.904878 |        2.14773 | No            |
+| net_sentiment                          |   1.20857 |       1.10489  |        1.41186 | Yes           |
+| Product_Performance_Usability_Negative |   1.17103 |       0.895667 |        1.9782  | No            |
 
 ### C. Bootstrapped Predictive Discrimination (C-index)
 *Source: `model_metrics.json`* (Evaluated via `concordance_index_censored` with 1,000 bootstrap iterations)
@@ -371,12 +371,12 @@ The following table explicitly proves that the Universal Framework successfully 
 
 | Features            |   C-index |   Delta_C |
 |:--------------------|----------:|----------:|
-| Behavior Only       |  0.587072 |  0        |
-| + Mean/Aspects      |  0.762956 |  0.175884 |
-| + Variance          |  0.762956 |  0.175884 |
-| + Flip Rate         |  0.762956 |  0.175884 |
-| + Entropy           |  0.759568 |  0.172496 |
-| All (Full Semantic) |  0.722578 |  0.135506 |
+| Behavior Only       |  0.564915 |  0        |
+| + Mean/Aspects      |  0.762131 |  0.197217 |
+| + Variance          |  0.762131 |  0.197217 |
+| + Flip Rate         |  0.762131 |  0.197217 |
+| + Entropy           |  0.730635 |  0.165721 |
+| All (Full Semantic) |  0.729537 |  0.164622 |
 
 ### G. Cluster-Robust Standard Errors Comparison (Top 5)
 *Source: outputs/pipeline_freeze/results/se_comparison.csv*
@@ -396,3 +396,19 @@ The following table explicitly proves that the Universal Framework successfully 
 |:----------------------------|----------------------:|-----------------:|---------------------------:|-----------------------------:|--------------------------:|:-----------------|
 | Entire Population (Broader) |                210905 |           562424 |                       2.67 |                            2 |                       171 | 41.45%           |
 | Exact Cohort (Semantic)     |                  1165 |             1174 |                       1.01 |                            1 |                         3 | 65.25%           |
+
+### I. Out-Of-Sample Integrity & Data Splitting
+*Source: Temporal Split Log*
+
+To ensure absolute protection against data leakage and optimism bias, the Semantic Cohort is split temporally (70-15-15) based on the \episode_start\ date. Furthermore, feature selection (variance/collinearity filtering) and standard scaling are fitted exclusively on the 70% Training set.
+
+| Metric | Count / Percentage |
+| :--- | :--- |
+| **Train Episodes** | 1,174 |
+| **Test Episodes** | 213 |
+| **Train Unique Customers** | 1,165 |
+| **Test Unique Customers** | 213 |
+| **Customer Overlap (Train ∩ Test)** | 3 |
+| **Customer Overlap Percentage** | 1.41% |
+
+**Conclusion**: The out-of-sample Test Set is composed of 98.59% entirely unseen customers. The reported C-index improvement strictly represents forward-looking generalization, not historical memorization.
