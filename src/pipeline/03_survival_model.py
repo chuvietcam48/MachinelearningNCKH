@@ -130,6 +130,16 @@ def main():
                 pred = cph.predict_partial_hazard(test_X[active_feats])
                 pred_df = test_df[['episode_id', 'E_Event', 'T_Duration']].copy()
                 pred_df['risk_score'] = pred.values
+                
+                # Predict survival function at median training time
+                t_star = np.median(train_df['T_Duration'])
+                try:
+                    surv_func = cph.predict_survival_function(test_X[active_feats], times=[t_star])
+                    pred_df['survival_prob'] = surv_func.iloc[0].values
+                except Exception as ex:
+                    print(f"    -> Warning: Could not predict survival function: {ex}")
+                    pred_df['survival_prob'] = np.nan
+                
                 pred_df.to_parquet(pred_dir / f"prediction_{name.lower()}_{cohort_name.lower()}.parquet", index=False)
                 
                 # Export Hazard Ratios for Model C

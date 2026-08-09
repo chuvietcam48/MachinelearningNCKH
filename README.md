@@ -208,3 +208,20 @@ obust=True) by CustomerID, correcting for episode dependence.
 * **Dataset Splitting**: The framework uses a strict temporal holdout split (70-15-15) based on episode_start.
 * **Zero Leakage**: Standardizers and feature variance/collinearity filters are strictly it on the 70% training set and merely 	ransformed on the test set. 
 * **Customer Overlap**: We calculated the customer intersection between the training set and the out-of-sample test set. Only **3 customers** (1.41% of the test cohort) overlap, proving that the model achieves its high C-index by generalizing to new customers, not by memorizing the behavior of known customers.
+
+### 6. Final DSIT Rebuttal Scripts (August 2026)
+To address the final reviewer comments regarding episodic framing, target leakage, and metric robustness, we added a suite of standalone verification scripts. You can run them directly:
+
+```bash
+# A1: Run the strict Retrospective Classification Baseline (snapshot t_0 = 70th percentile)
+python src/pipeline/10_retrospective_baseline.py
+
+# A2: Run the Multi-Dataset Generality Benchmark (Strict OOS for CDNOW, TaFeng, UCI)
+python src/pipeline/11_benchmark_generality.py
+
+# A4: Run Extended Statistical Metrics (PH Tests, Uno's C, IBS, Customer-level Bootstrap HR)
+python src/pipeline/12_extended_metrics.py
+
+# A5: Generate Evaluation Protocol Manifest (Exports all cohort metrics to JSON)
+python src/pipeline/13_eval_protocol.py
+```

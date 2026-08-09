@@ -47,11 +47,18 @@ def main():
         
     df = pd.merge(pred_df, feat_df.drop(columns=['E_Event', 'T_Duration'], errors='ignore'), on="episode_id")
     
-    # 1. Risk Stratification
-    p50 = np.percentile(df['risk_score'], 50)
-    p80 = np.percentile(df['risk_score'], 80)
+    # 1. Risk Stratification (High risk means LOW survival_prob -> leaving soon)
+    # But wait, we want to intervene on those who are NOT interacting soon.
+    # Event = next interaction. Hazard = probability of next interaction.
+    # Therefore, a low hazard (high survival_prob) means prolonged inactivity (CHURN).
+    # We want to intervene when prolonged inactivity risk is HIGH.
+    # So "High" risk actually means HIGH survival_prob (S(t*) > p80)
     
-    df['Risk_Level'] = df['risk_score'].apply(lambda x: "High" if x >= p80 else ("Medium" if x >= p50 else "Low"))
+    # We will stratify by survival_prob (prolonged inactivity risk)
+    p50 = np.percentile(df['survival_prob'].dropna(), 50)
+    p80 = np.percentile(df['survival_prob'].dropna(), 80)
+    
+    df['Risk_Level'] = df['survival_prob'].apply(lambda x: "High" if x >= p80 else ("Medium" if x >= p50 else "Low"))
     
     df['CLV_Proxy'] = df['prior_verified_episode_count'] + 1
     val_p50 = np.percentile(df['CLV_Proxy'], 50)
@@ -82,7 +89,7 @@ def main():
     df['Success_Prob'] = probs
     
     # 4. Priority Ranking
-    df['Priority_Score'] = (df['risk_score'] * df['CLV_Proxy'] * df['Success_Prob']) / (df['Intervention_Cost'] + 0.1)
+    df['Priority_Score'] = (df['survival_prob'] * df['CLV_Proxy'] * df['Success_Prob']) / (df['Intervention_Cost'] + 0.1)
     
     df_sorted = df.sort_values('Priority_Score', ascending=False)
     df_sorted[['episode_id', 'Risk_Level', 'Value_Level', 'Semantic_Attribution', 'Recommended_Intervention', 'Priority_Score', 'Intervention_Cost']].head(100).to_csv(policy_dir / "priority_list_top100.csv", index=False)
@@ -130,7 +137,7 @@ def main():
                 scaled_clv = df['CLV_Proxy'] * vs * 100 
                 success_prob = df['Success_Prob'] * g
                 
-                expected_saved_value = success_prob * scaled_clv * df['risk_score']
+                expected_saved_value = success_prob * scaled_clv * df['survival_prob']
                 net_roi = expected_saved_value - scaled_cost
                 
                 intervene_mask = net_roi > 0

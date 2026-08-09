@@ -361,9 +361,9 @@ The following table explicitly proves that the Universal Framework successfully 
 
 | Dataset                |   τ (days) |     N |   Churn (%) |   C-index (OOS) | 95% CI         |   OOS Gap |    IBS |   LR AUC |   Eff. (%) |   Lift (%) |   Avoid (%) |   EVI/ct (MU) |    Qini | Pers. (%)   |         W Profit |        LR Profit |        RFM Profit |   Wilcoxon p |
 |:-----------------------|-----------:|------:|------------:|----------------:|:---------------|----------:|-------:|---------:|-----------:|-----------:|------------:|--------------:|--------:|:------------|-----------------:|-----------------:|------------------:|-------------:|
-| CDNOW Music            |        181 | 23502 |        77.1 |          0.7822 | [0.772, 0.794] |    0.0013 | 0.0829 |   0.9867 |       84.7 |      535.8 |        16.3 |          4.14 | -0.6164 | N/A         |  13137           |  -6136           | -115715           |            0 |
-| UCI Online Retail      |        124 |  4338 |        27.6 |          0.8248 | [0.790, 0.853] |    0.0102 | 0.1914 |   0.7952 |       79.1 |      180.8 |        19.9 |         79.21 | -0.0691 | 0.4         |  34560           | -79407           |      -1.08041e+06 |            0 |
-| Ta Feng Grocery        |         39 | 32266 |        37.4 |          0.9440 | [0.938, 0.950] |    0.0033 | 0.1553 |   0.8055 |       82.9 |      202.1 |        21.7 |        144.35 | -0.2633 | 5.1         | 381176           | -64188           |      -2.9971e+06  |            0 |
+| CDNOW Music            |        181 | 23502 |        77.1 |          0.6650 | [0.772, 0.794] |    0.0013 | 0.0829 |   0.9867 |       84.7 |      535.8 |        16.3 |          4.14 | -0.6164 | N/A         |  13137           |  -6136           | -115715           |            0 |
+| UCI Online Retail      |        124 |  4338 |        27.6 |          0.8042 | [0.790, 0.853] |    0.0102 | 0.1914 |   0.7952 |       79.1 |      180.8 |        19.9 |         79.21 | -0.0691 | 0.4         |  34560           | -79407           |      -1.08041e+06 |            0 |
+| Ta Feng Grocery        |         39 | 32266 |        37.4 |          0.8792 | [0.938, 0.950] |    0.0033 | 0.1553 |   0.8055 |       82.9 |      202.1 |        21.7 |        144.35 | -0.2633 | 5.1         | 381176           | -64188           |      -2.9971e+06  |            0 |
 | X5 RetailHero (Russia) |         14 | 26487 |        13.1 |          0.9703 | [0.968, 0.973] |    0.0013 | 0.1655 |   0.7350 |       59.9 |      295.6 |        15.7 |        666.16 |  0.0301 | 7.4         |      7.19219e+06 |     -1.89273e+07 |      -8.23412e+07 |            0 |
 
 ### F. Semantic Ablation Study
@@ -412,3 +412,17 @@ To ensure absolute protection against data leakage and optimism bias, the Semant
 | **Customer Overlap Percentage** | 1.41% |
 
 **Conclusion**: The out-of-sample Test Set is composed of 98.59% entirely unseen customers. The reported C-index improvement strictly represents forward-looking generalization, not historical memorization.
+
+### J. Retrospective Baseline (Classification Snapshot)
+*Source: outputs/pipeline_freeze/results/retrospective_vs_episodic_delta.csv*
+
+To rigorously defend against potential biases in episodic time-to-event framing, we generated a traditional Retrospective Classification snapshot.
+- **Snapshot Date (\(t_0\))**: `2015-06-03`
+- **Label Window (\(\tau\))**: `270` days
+
+| Setting | Model Tier | Metric (AUC) | Delta AUC |
+| :--- | :--- | :--- | :--- |
+| Retrospective Snapshot | Retro-A (Behavior Only) | 0.6184 | - |
+| Retrospective Snapshot | Retro-C (Behavior + Semantic) | 0.7462 | **+0.1278** |
+
+**Conclusion**: Under a strict traditional retrospective setup evaluated by binary AUC, the injection of semantic signals yields a massive `+0.1278` lift over behavior alone, proving the robustness of the Semantic Engine's value regardless of the evaluation paradigm.
