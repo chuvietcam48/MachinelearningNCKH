@@ -157,20 +157,16 @@ def main():
     
     # Semantic Cohort
     if 'semantic_available' in df_train.columns:
-        is_annotated_train = df_train['semantic_available'] == 1
-        is_censored_train = (df_train['E_Event'] == 0) & (df_train['T_Duration'] == 270.0)
-        sem_train = df_train[is_annotated_train | is_censored_train]
+        sem_train = df_train[df_train['semantic_available'] == 1].copy()
         sem_train.to_parquet(out_dir / "master_train_semantic.parquet", index=False)
         
-        is_annotated_val = df_val['semantic_available'] == 1
-        is_censored_val = (df_val['E_Event'] == 0) & (df_val['T_Duration'] == 270.0)
-        df_val[is_annotated_val | is_censored_val].to_parquet(out_dir / "master_val_semantic.parquet", index=False)
+        sem_val = df_val[df_val['semantic_available'] == 1].copy()
+        sem_val.to_parquet(out_dir / "master_val_semantic.parquet", index=False)
         
-        is_annotated_test = df_test['semantic_available'] == 1
-        is_censored_test = (df_test['E_Event'] == 0) & (df_test['T_Duration'] == 270.0)
-        df_test[is_annotated_test | is_censored_test].to_parquet(out_dir / "master_test_semantic.parquet", index=False)
+        sem_test = df_test[df_test['semantic_available'] == 1].copy()
+        sem_test.to_parquet(out_dir / "master_test_semantic.parquet", index=False)
         
-        print(f"Semantic Train size: {len(sem_train):,} (Includes {is_censored_train.sum():,} censors)")
+        print(f"Semantic Train size: {len(sem_train):,}")
     
     print("02: Dataset Construction completed successfully.")
 

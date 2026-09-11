@@ -10,7 +10,7 @@ class SurvivalEngine:
     Layer 3: Survival Engine
     Fits survival models (CoxPH) dynamically depending on the features provided.
     """
-    def __init__(self, penalizer: float = 0.1, l1_ratio: float = 0.0):
+    def __init__(self, penalizer: float = 0.001, l1_ratio: float = 0.0):
         self.penalizer = penalizer
         self.l1_ratio = l1_ratio
 

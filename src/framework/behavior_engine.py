@@ -40,17 +40,24 @@ class BehaviorEngine:
     def _extract_episode_behavior(self, df: pd.DataFrame) -> pd.DataFrame:
         import numpy as np
         logger.info("Extracting episode-based behavior features...")
-        # Survival targets
-        df['T_Duration'] = np.where(
-            pd.isna(df.get('next_episode_start')),
-            270.0,
-            (df.get('next_episode_start') - df['episode_endpoint']).dt.total_seconds() / (24 * 3600)
-        ) if 'next_episode_start' in df.columns else 270.0
-        df['T_Duration'] = df['T_Duration'].clip(upper=270.0)
-        
-        if 'Y_dormant_270' in df.columns:
-            df['E_Event'] = df['Y_dormant_270'].astype(int)
+        # Survival targets (Open-ended Definition)
+        END_OF_STUDY = pd.to_datetime('2018-10-01')
+        if 'next_episode_start' in df.columns:
+            df['next_episode_start'] = pd.to_datetime(df['next_episode_start'])
+            df['episode_endpoint'] = pd.to_datetime(df['episode_endpoint'])
+            df['True_dt'] = (df['next_episode_start'] - df['episode_endpoint']).dt.total_seconds() / (24*3600)
+            df['has_next'] = df['next_episode_start'].notnull()
+
+            df['E_Event'] = df['has_next'].astype(int)
+            df['T_Duration'] = np.where(
+                df['has_next'],
+                df['True_dt'],
+                (END_OF_STUDY - df['episode_endpoint']).dt.total_seconds() / (24*3600)
+            )
+            df['T_Duration'] = df['T_Duration'].clip(lower=1.0)
+            df = df.drop(columns=['has_next', 'True_dt'])
         else:
+            df['T_Duration'] = 270.0
             df['E_Event'] = 0
 
         # Advanced behavior

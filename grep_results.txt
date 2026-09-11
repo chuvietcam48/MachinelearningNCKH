@@ -1,0 +1,29 @@
+# A - Event/Censoring
+48:    next_orders = df_all_orders[
+53:    first_next_orders = next_orders.sort_values('order_purchase_timestamp').groupby('customer_unique_id').first().reset_index()
+54:    first_next_orders.rename(columns={'order_purchase_timestamp': 'next_purchase_time'}, inplace=True)
+56:    dataset = origins.merge(first_next_orders[['customer_unique_id', 'next_purchase_time']], on='customer_unique_id', how='left')
+
+# B/C - Cohort alignment + chronological split
+9:  Gate C — Model A and Model C use the exact same customer sets (train + test)
+107:    # ── Gate C: Same cohort for Model A and Model C ───────────────────────────
+116:        raise AssertionError(f"Gate C FAILED: {len(overlap)} customer IDs appear in both train and test splits.")
+
+# D - penalizer
+13:    def __init__(self, penalizer: float = 0.001, l1_ratio: float = 0.0):
+14:        self.penalizer = penalizer
+21:        logger.info(f"Fitting CoxPH Model (Penalizer: {self.penalizer})")
+48:        cph = CoxPHFitter(penalizer=self.penalizer, l1_ratio=self.l1_ratio)
+
+# F - fail loud, không mock
+79:def get_model_version(response, fallback_name):
+88:    except:
+90:    return f"{fallback_name}_(unavailable)"
+132:    except Exception as e:
+134:        sys.exit(1)
+219:            except Exception as e:
+238:            sys.exit(1)
+259:        sys.exit(1)
+271:        sys.exit(1)
+284:        sys.exit(0)
+298:        sys.exit(1)

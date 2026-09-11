@@ -306,123 +306,44 @@ The framework achieved its universal status through iterative, empirical hardeni
 
 This section contains the exact, frozen statistical outputs from `outputs/pipeline_freeze/results/` to serve as a direct reference for presentations and reviewer defenses.
 
-### A. Information Gain & Model Fit (LRT)
-*Source: `information_gain.csv`*
+### A. The Target Leakage Discovery (Pre-Correction)
 
-| Cohort | Baseline (Model A) AIC | Semantic (Model C) AIC | AIC Improvement | LRT Statistic | p-value | Conclusion |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Full** | 6,001,105.10 | 6,001,006.72 | 98.38 | 140.38 | 3.35e-15 | Highly Significant |
-| **Semantic** | 4,437.51 | 4,467.49 | -29.98 | 10.02 | 0.999 | No direct AIC gain for semantic-only subpopulation, but adds interpretability. |
+Ban đầu, framework ghi nhận những kết quả "không tưởng":
+- HR của `dominance_ratio` lên tới 16.40.
+- $\Delta$C-index tăng vọt +0.16.
+- $\Delta$AUC Snapshot tăng +0.1278.
 
-### B. Semantic Hazard Ratios & Bootstrap Stability (Top 10 Risk Attributes)
-*Source: outputs/pipeline_freeze/results/bootstrap_hazard_ratios.csv (Cluster-Robust SE, 100 Bootstrap Iterations)*
+Tuy nhiên, qua quá trình kiểm định pháp y dữ liệu (Data Forensics), chúng tôi phát hiện lỗi **Target Leakage** do Imputation: Hàng trăm bệnh nhân (censored) được bơm vào tập Semantic nhưng không có dữ liệu thực tế (unannotated), dẫn đến việc model học được quy luật giả định: *"Nếu feature = 0 (do impute) $\rightarrow$ chắc chắn là Censored"*.
 
-| Feature                                |   Mean_HR |   95%_CI_Lower |   95%_CI_Upper | Significant   |
-|:---------------------------------------|----------:|---------------:|---------------:|:--------------|
-| dominance_ratio                        |   8.27455 |       4.76468  |       13.5775  | Yes           |
-| Domain_Experience_Positive             |   2.23618 |       1.92315  |        2.77301 | Yes           |
-| Product_Condition_Quality_Positive     |   2.14848 |       1.66652  |        2.81746 | Yes           |
-| sentiment_profile                      |   2.03022 |       1.65261  |        2.52038 | Yes           |
-| Delivery_Fulfillment_Positive          |   1.98639 |       1        |        2.60717 | No            |
-| Price_Value_Positive                   |   1.67446 |       1        |        2.36907 | No            |
-| aspect_entropy                         |   1.50745 |       0.893258 |        2.27397 | No            |
-| Domain_Experience_Negative             |   1.33834 |       0.904878 |        2.14773 | No            |
-| net_sentiment                          |   1.20857 |       1.10489  |        1.41186 | Yes           |
-| Product_Performance_Usability_Negative |   1.17103 |       0.895667 |        1.9782  | No            |
+### B. The Pure Semantic Cohort (Post-Correction)
 
-### C. Bootstrapped Predictive Discrimination (C-index)
-*Source: `model_metrics.json`* (Evaluated via `concordance_index_censored` with 1,000 bootstrap iterations)
+Để loại bỏ hoàn toàn sự rò rỉ, chúng tôi tiến hành đánh giá lại trên **Pure Semantic Cohort** (chỉ giữ lại những bệnh nhân có text review thực sự được annotate bởi LLM, không impute).
 
-| Cohort | Model Tier | Concordance Index | 95% Confidence Interval |
+Quy mô Pure Cohort: `Train=768, Val=164, Test=159`.
+
+### C. Bootstrapped Predictive Discrimination (The Null Result)
+
+Khi loại bỏ nhiễu, sức mạnh dự đoán của Cảm xúc (Semantic) hoàn toàn biến mất, chứng minh hiện tượng **Information Saturation** (Hành vi dĩ vãng đã bão hòa toàn bộ thông tin dự đoán, Text không mang lại giá trị biên).
+
+| Metric | Model A (Behavior) | Model C (Behavior + Semantic) | $\Delta$ (Information Gain) |
 | :--- | :--- | :--- | :--- |
-| **Full** | Model A (Behavior) | 0.6665 | [0.6562, 0.6769] |
-| **Full** | Model B (Sentiment) | 0.6560 | [0.6456, 0.6665] |
-| **Full** | Model C (Semantic Trajectory) | 0.6636 | [0.6533, 0.6739] |
-| **Semantic**| Model A (Behavior) | 0.5649 | [0.5534, 0.5762] |
-| **Semantic**| Model B (Sentiment) | 0.5773 | [0.5651, 0.5887] |
-| **Semantic**| Model C (Semantic Trajectory)| 0.7295 | [0.7203, 0.7388] |
+| **C-index (OOS)** | 0.7460 | 0.7487 | **+0.0028** |
+| **AUC (270-day)** | 0.7862 | 0.7856 | **-0.0006** |
 
-### D. Decision Support Policy Routing Matrix
-*Source: `policy_routing_matrix.csv`*
+**Conclusion**: $\Delta$AUC $\approx 0$. Tín hiệu Semantic hoàn toàn KHÔNG đóng góp bất kỳ giá trị dự báo nào so với Behavior trên tập dữ liệu Amazon CDs (nơi Event bị proxy thành Next-Review).
 
-The ultimate outcome of the framework: routing customers to the most cost-effective retention strategy based on their Hazard Score and Expected ROI.
+### D. Interpretability (Hazard Ratios on Pure Cohort)
 
-| Recommended Intervention | Target Customers | Total Campaign Cost | Expected ROI |
-| :--- | :--- | :--- | :--- |
-| **No Action Needed** | 90 | $0.00 | $0.00 |
-| **Retention Reminder** | 37 | $37.00 | $1.03 |
-| **Generic Behavioral Campaign** | 30 | $150.00 | $6.67 |
-| **Human Escalation** | 2 | $30.00 | $0.63 |
+Khi đánh giá mức độ rủi ro (Hazard Ratio), top 5 biến mạnh nhất của Model C hoàn toàn bị thống trị bởi các biến Hành vi (Behavior).
 
-### E. Universal Behavior Engine Benchmark (Non-Text Datasets)
-*Source: `outputs/benchmark/benchmark_table.md`* (Generated via live execution of the Universal Pipeline)
+1. `episode_duration` (Behavior)
+2. `days_since_previous_episode` (Behavior)
+3. `prior_verified_episode_count` (Behavior)
+4. `prior_review_count` (Behavior)
+5. `review_frequency` (Behavior)
 
-The following table explicitly proves that the Universal Framework successfully executes on public e-commerce datasets completely absent of unstructured text, bypassing the Semantic Engine and executing flawlessly via the standard Behavior Engine. This fresh benchmark run natively resolves Target Leakage on pure transactional data using the framework's Episodic Forward-Looking formulation.
+Không có bất kỳ biến Semantic nào (`dominance_ratio`, `aspect_entropy`) lọt vào Top 5. Chúng hoàn toàn mất đi ý nghĩa thống kê (Statistical Significance) khi được đánh giá trên tập dữ liệu sạch.
 
-| Dataset                |   τ (days) |     N |   Churn (%) |   C-index (OOS) | 95% CI         |   OOS Gap |    IBS |   LR AUC |   Eff. (%) |   Lift (%) |   Avoid (%) |   EVI/ct (MU) |    Qini | Pers. (%)   |         W Profit |        LR Profit |        RFM Profit |   Wilcoxon p |
-|:-----------------------|-----------:|------:|------------:|----------------:|:---------------|----------:|-------:|---------:|-----------:|-----------:|------------:|--------------:|--------:|:------------|-----------------:|-----------------:|------------------:|-------------:|
-| CDNOW Music            |        181 | 23502 |        77.1 |          0.6650 | [0.772, 0.794] |    0.0013 | 0.0829 |   0.9867 |       84.7 |      535.8 |        16.3 |          4.14 | -0.6164 | N/A         |  13137           |  -6136           | -115715           |            0 |
-| UCI Online Retail      |        124 |  4338 |        27.6 |          0.8042 | [0.790, 0.853] |    0.0102 | 0.1914 |   0.7952 |       79.1 |      180.8 |        19.9 |         79.21 | -0.0691 | 0.4         |  34560           | -79407           |      -1.08041e+06 |            0 |
-| Ta Feng Grocery        |         39 | 32266 |        37.4 |          0.8792 | [0.938, 0.950] |    0.0033 | 0.1553 |   0.8055 |       82.9 |      202.1 |        21.7 |        144.35 | -0.2633 | 5.1         | 381176           | -64188           |      -2.9971e+06  |            0 |
-| X5 RetailHero (Russia) |         14 | 26487 |        13.1 |          0.9703 | [0.968, 0.973] |    0.0013 | 0.1655 |   0.7350 |       59.9 |      295.6 |        15.7 |        666.16 |  0.0301 | 7.4         |      7.19219e+06 |     -1.89273e+07 |      -8.23412e+07 |            0 |
+### E. Final Verdict: The Amazon Null Result
 
-### F. Semantic Ablation Study
-*Source: outputs/pipeline_freeze/results/semantic_ablation.csv*
-
-| Features            |   C-index |   Delta_C |
-|:--------------------|----------:|----------:|
-| Behavior Only       |  0.564915 |  0        |
-| + Mean/Aspects      |  0.762131 |  0.197217 |
-| + Variance          |  0.762131 |  0.197217 |
-| + Flip Rate         |  0.762131 |  0.197217 |
-| + Entropy           |  0.730635 |  0.165721 |
-| All (Full Semantic) |  0.729537 |  0.164622 |
-
-### G. Cluster-Robust Standard Errors Comparison (Top 5)
-*Source: outputs/pipeline_freeze/results/se_comparison.csv*
-
-| Feature                  |   Classical_SE |   Robust_SE |   Diff_Absolute | Diff_Percentage   |
-|:-------------------------|---------------:|------------:|----------------:|:------------------|
-| days_since_last_negative |       0.29173  | 7.03361e-15 |        0.29173  | -100.00%          |
-| previous_total_aspects   |       0.139958 | 0.34823     |        0.208272 | 148.81%           |
-| prior_review_count       |       0.257211 | 0.0733084   |        0.183903 | -71.50%           |
-| has_conflict             |       0.214356 | 0.0366121   |        0.177744 | -82.92%           |
-| same_aspect_conflict     |       0.190719 | 0.0420404   |        0.148678 | -77.96%           |
-
-### H. Selection Bias & Cohort Analysis
-*Source: outputs/pipeline_freeze/results/cohort_analysis.csv*
-
-| Cohort                      |   Number of Customers |   Total Episodes |   Episodes/Customer (Mean) |   Episodes/Customer (Median) |   Episodes/Customer (Max) | Censoring Rate   |
-|:----------------------------|----------------------:|-----------------:|---------------------------:|-----------------------------:|--------------------------:|:-----------------|
-| Entire Population (Broader) |                210905 |           562424 |                       2.67 |                            2 |                       171 | 41.45%           |
-| Exact Cohort (Semantic)     |                  1165 |             1174 |                       1.01 |                            1 |                         3 | 65.25%           |
-
-### I. Out-Of-Sample Integrity & Data Splitting
-*Source: Temporal Split Log*
-
-To ensure absolute protection against data leakage and optimism bias, the Semantic Cohort is split temporally (70-15-15) based on the \episode_start\ date. Furthermore, feature selection (variance/collinearity filtering) and standard scaling are fitted exclusively on the 70% Training set.
-
-| Metric | Count / Percentage |
-| :--- | :--- |
-| **Train Episodes** | 1,174 |
-| **Test Episodes** | 213 |
-| **Train Unique Customers** | 1,165 |
-| **Test Unique Customers** | 213 |
-| **Customer Overlap (Train ∩ Test)** | 3 |
-| **Customer Overlap Percentage** | 1.41% |
-
-**Conclusion**: The out-of-sample Test Set is composed of 98.59% entirely unseen customers. The reported C-index improvement strictly represents forward-looking generalization, not historical memorization.
-
-### J. Retrospective Baseline (Classification Snapshot)
-*Source: outputs/pipeline_freeze/results/retrospective_vs_episodic_delta.csv*
-
-To rigorously defend against potential biases in episodic time-to-event framing, we generated a traditional Retrospective Classification snapshot.
-- **Snapshot Date (\(t_0\))**: `2015-06-03`
-- **Label Window (\(\tau\))**: `270` days
-
-| Setting | Model Tier | Metric (AUC) | Delta AUC |
-| :--- | :--- | :--- | :--- |
-| Retrospective Snapshot | Retro-A (Behavior Only) | 0.6184 | - |
-| Retrospective Snapshot | Retro-C (Behavior + Semantic) | 0.7462 | **+0.1278** |
-
-**Conclusion**: Under a strict traditional retrospective setup evaluated by binary AUC, the injection of semantic signals yields a massive `+0.1278` lift over behavior alone, proving the robustness of the Semantic Engine's value regardless of the evaluation paradigm.
+Dữ liệu Semantic từ LLM extraction trong project này **không có giá trị đối với bài toán Survival/Churn trên tập Amazon CDs & Vinyl**. Sự cường điệu về sức mạnh của LLM trong dự đoán hành vi người dùng thường xuất phát từ các sai lầm phương pháp luận (như Target Leakage, Zero-Imputation, và temporal masking) thay vì năng lực thực sự của mô hình. Khung nghiên cứu của bài báo sẽ chuyển hướng sang Phê bình Phương pháp luận (Methodological Critique) và phơi bày hiện tượng Information Saturation.
