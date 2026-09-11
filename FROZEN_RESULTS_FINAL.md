@@ -18,7 +18,7 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 - **Model A:** C-index = 0.7540 (95% CI [0.693, 0.816]) | AUC@270 = 0.7848 (95% CI [0.706, 0.858])
 - **Model C:** C-index = 0.7576 (95% CI [0.697, 0.821]) | AUC@270 = 0.7806 (95% CI [0.706, 0.852])
 - **Paired Δ (Model C - A):** ΔC = +0.0036 (95% CI [-0.021, 0.028]) | ΔAUC = -0.0042 (95% CI [-0.036, 0.028])
-- **Script tạo:** `scratch/run_pipeline.py` gọi hàm từ `src/pipeline/10_retrospective_baseline.py` và `src/framework/survival_evaluator.py` (với 500 vòng Bootstrap CI).
+- **Script tạo:** `src/pipeline/03_survival_model.py` và audit qua `scratch/check_stats.py` (Episodic formulation với 500 vòng Bootstrap CI).
 
 ## 3. Amazon — Sub-models (semantic-only, rating-only, temporal-only)
 - **Semantic-only Model:** C-index = 0.5102 (95% CI [0.447, 0.569])
@@ -28,7 +28,6 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 
 ## 4. Amazon — LRT, Ablation
 - **Likelihood-Ratio Test (LRT) giữa Model A và C:** $\chi^2 = 18.84$, $df = 33$, $p = 0.9771$
-- **Minimum Detectable Effect (MDE) cho 80 events:** $\Delta C \approx 0.05$ (dựa trên sample size rule of thumb).
 - **Script tạo:** `scratch/check_stats.py` (tính từ model log-likelihoods).
 
 ## 5. Olist — Cohort & kết quả
@@ -36,7 +35,8 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 - **Vấn đề cấu trúc:** Test set bị giới hạn thời gian quan sát lớn nhất (max observation window) chỉ còn 102 ngày.
 - **Hệ quả sự kiện:** Chỉ bắt được 22 true events (tỉ lệ 0.73%).
 - **MDE (Olist):** Đội lên tới $\Delta C = 0.2149$.
-- **Kết quả C-index (Cả 2 mô hình):** Xoay quanh $\approx 0.50$ (Mức Random Guess).
+- **Kết quả C-index:** Model A = 0.5329 | Model C = 0.4696
+- **Kết quả ΔAUC:** -0.0616 (95% CI [-0.213, 0.079])
 - **Script tạo:** `scratch/check_mass.py` (audit tập Olist).
 
 ## 6. Files không push được lên git (local only)
