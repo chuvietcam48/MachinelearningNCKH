@@ -1,0 +1,21 @@
+{
+  "title": "Bounded Contribution of LLM-Derived Aspect Descriptors to Customer Re-Engagement Timing: An Equivalence Analysis",
+  "description": "Code implementing the episodic cohort construction, behavioural Cox proportional-hazards baseline, bootstrap equivalence tests (TOST), and semantic-descriptor ablations reported in the accompanying paper.",
+  "creators": [
+    { "name": "Chu, Viet-Cam", "affiliation": "University of Economics and Law, VNU-HCM" },
+    { "name": "Huynh, Ngoc-Nhu-Y", "affiliation": "University of Economics and Law, VNU-HCM" },
+    { "name": "Truong, Hoai-Phan", "affiliation": "University of Economics and Law, VNU-HCM" },
+    { "name": "Le, Hoanh-Su", "affiliation": "University of Economics and Law, VNU-HCM" },
+    { "name": "Nguyen, Phuc", "affiliation": "University of Economics and Law, VNU-HCM" }
+  ],
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "MIT",
+  "keywords": [
+    "survival analysis",
+    "equivalence testing",
+    "aspect-based sentiment analysis",
+    "customer retention",
+    "Cox proportional hazards"
+  ]
+}
