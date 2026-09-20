@@ -1,6 +1,6 @@
 {
   "title": "Bounded Contribution of LLM-Derived Aspect Descriptors to Customer Re-Engagement Timing: An Equivalence Analysis",
-  "description": "Code implementing the episodic cohort construction, behavioural Cox proportional-hazards baseline, bootstrap equivalence tests (TOST), and semantic-descriptor ablations reported in the accompanying paper.",
+  "description": "This deposit contains (1) the full pipeline code implementing episodic cohort construction, behavioural Cox proportional-hazards baseline, bootstrap equivalence tests (TOST), and semantic-descriptor ablations reported in the accompanying paper; and (2) the LLM-derived aspect annotation file <code>mass_results_v224_qa.jsonl</code> comprising 2,067 successfully parsed annotation records produced by the Gemini-based ABSA pipeline (prompt version v2.2.4, taxonomy v2.2.4). The annotation file covers Amazon CDs &amp; Vinyl reviews and constitutes the semantic feature input for the survival-analysis models evaluated in the paper.",
   "creators": [
     { "name": "Chu, Viet-Cam", "affiliation": "University of Economics and Law, VNU-HCM" },
     { "name": "Huynh, Ngoc-Nhu-Y", "affiliation": "University of Economics and Law, VNU-HCM" },
