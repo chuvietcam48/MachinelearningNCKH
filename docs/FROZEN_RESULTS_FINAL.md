@@ -45,3 +45,8 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 - **Dữ liệu lớn:** `outputs/amazon_v5_rebuild/gate10_baseline/master_train_semantic.parquet`, `master_test_semantic.parquet`, và `feature_registry.json`.
 - **Lý do:** Kích thước lớn và định dạng nhị phân (.parquet) bị chặn bởi `.gitignore`.
 - **Cách tái tạo:** Chạy lại file `src/pipeline/02_dataset_construction.py` trên máy local, toàn bộ logic và feature sets sẽ được trích xuất y hệt và lưu vào thư mục `outputs`.
+
+## 7. Các cập nhật văn bản Manuscript
+- **Mục 5 (Căn cứ t*=270):** The 270-day decision horizon $t^*$ was chosen a priori as a nine-month retention window and held fixed throughout; we did not tune this value against the data. The maximum observed survival time in the training split is exactly 270.0 days as a direct consequence of this choice, since episodes are right-censored at the boundary of the observation window used to build the cohort.
+- **Mục 6a (JSON Parsing Rate):** The released annotation file (Zenodo, see Data and Code Availability) contains 2,067 successfully parsed records out of 2,260 reviews submitted for annotation, an effective JSON parsing validity rate of 91.46%, recovered post hoc from the released annotation file rather than logged during the original bulk extraction run.
+
