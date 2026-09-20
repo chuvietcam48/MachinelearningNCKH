@@ -48,5 +48,5 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 
 ## 7. Các cập nhật văn bản Manuscript
 - **Mục 5 (Căn cứ t*=270):** The 270-day decision horizon $t^*$ was chosen a priori as a nine-month retention window and held fixed throughout; we did not tune this value against the data. The maximum observed survival time in the training split is exactly 270.0 days as a direct consequence of this choice, since episodes are right-censored at the boundary of the observation window used to build the cohort.
-- **Mục 6a (JSON Parsing Rate):** The released annotation file (Zenodo, see Data and Code Availability) contains 2,067 successfully parsed records out of 2,260 reviews submitted for annotation, an effective JSON parsing validity rate of 91.46%, recovered post hoc from the released annotation file rather than logged during the original bulk extraction run.
+- **Mục 6a (JSON Parsing Rate):** The exact number of reviews submitted for annotation could not be reconstructed from available logs; we report only the number of successfully parsed records (2,067) recovered post hoc from the released annotation file rather than logged during the original bulk extraction run.
 
