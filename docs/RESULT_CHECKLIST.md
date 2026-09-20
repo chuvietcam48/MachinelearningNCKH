@@ -32,9 +32,11 @@ All metrics have been verified against a **single, consecutive pipeline run** (2
 
 ## 3. Final C-Index (Semantic Cohort)
 Evaluated via `concordance_index_censored` with 1,000 bootstrap iterations (10k sample size).
-- **Model A (Behavior)**: `0.5649` 
-- **Model B (+ VADER)**: `0.5773` 
-- **Model C (+ LLM Semantic)**: `0.7295` 
+- **Model A (Behavior)**: `0.7540`
+- **Model C (+ LLM Semantic)**: `0.7576` (EPV: 8.0 danh nghĩa, 11.6 hiệu dụng)
+- **Temporal-only (No episode_duration)**: `0.710`
+- **Likelihood-Ratio Test (LRT)**: $\chi^2 = 18.84$, effective $df = 19$, $p = 0.4671$
+*(For full results, always refer to `docs/FROZEN_RESULTS_FINAL.md`)* 
 
 ## 4. Next Steps
 - [x] **Pipeline Frozen**: No further code changes.

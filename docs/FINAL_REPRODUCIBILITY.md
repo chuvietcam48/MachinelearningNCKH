@@ -35,3 +35,9 @@ All numerical claims in the manuscript MUST be cited from the following files lo
   - *Key Finding*: Simulated ROI and customer routing distributions.
 
 **Status: FROZEN.** No further algorithmic changes are permitted.
+
+## Limitation & Execution Reality (Kill-Switch)
+- **Sampling Target**: The original `gate7_6` design aimed for `10,000` episodes (`PRIMARY_SPLIT_TARGETS = {"train": 6000, "validation": 2000, "development_evaluation": 2000}`).
+- **Budget/Quota Constraint**: The Governance Contract (`13_gate7_8_live_executor_governance_design.py`) explicitly set budget and API quota limits (`max_primary_requests: 7745`). 
+- **Actual LLM Output**: During live execution, the pipeline hit the kill-switch (due to cost ceiling or quota limit), resulting in only **2,067 LLM-annotated reviews** successfully generated (`mass_results_v224_qa.jsonl`).
+- **Final Survival**: After passing these 2,067 raw responses through the strict pipeline filters (dropping NaNs, `episode_duration >= 0`), only **1,091 episodes** survived to form the final semantic cohort used in the results. This explains why the final N is 1,091 and not the targeted 10,000.

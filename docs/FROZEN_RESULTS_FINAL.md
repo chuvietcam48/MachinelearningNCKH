@@ -9,6 +9,7 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 ## 1. Amazon — Cohort
 - **N episodes:** 1091 (train=768, val=164, test=159)
 - **Events ở test:** 80
+- **Events ở train:** 360 (EPV Model C: 8.0 tính trên 45 biến danh nghĩa, 11.6 tính trên 31 biến hiệu dụng)
 - **Feature set Model A (12 biến):** `episode_duration`, `days_since_previous_episode`, `prior_verified_episode_count`, `prior_review_count`, `review_frequency`, `episode_min_rating`, `episode_max_rating`, `episode_mean_rating`, `episode_review_count`, `historical_mean_rating`, `recent_low_rating_count`, `customer_lifetime`.
 - **Feature set Model C (Model A + 33 biến semantic):** `dominance_ratio`, `aspect_entropy`, `net_sentiment`, `sentiment_profile`, `semantic_variance`, `has_conflict`, `cross_aspect_conflict`, `same_aspect_conflict`, `negative_streak`, `positive_streak`, `aspect_switch_rate`, `aspect_transition_pattern`, `days_since_last_negative`, `previous_negative_count`, `previous_total_aspects`, `sentiment_flip_rate`, `rolling_negative_ratio`, và 16 biến đếm positive/negative cho 8 khía cạnh.
 - **Penalizer:** 0.001
@@ -24,10 +25,11 @@ Người tạo / script chạy cuối: Antigravity Agent & pipeline v5
 - **Semantic-only Model:** C-index = 0.5102 (95% CI [0.447, 0.569])
 - **Rating-only Model:** C-index = 0.538 (95% CI [0.468, 0.607])
 - **Temporal-only Model:** C-index = 0.7529 (95% CI [0.692, 0.814])
+- **Temporal-only (No episode_duration):** C-index = 0.710 (95% CI [0.653, 0.773])
 - **Script tạo:** `scratch/check_stats.py` và `scratch/analyze_survival_data.py`.
 
 ## 4. Amazon — LRT, Ablation
-- **Likelihood-Ratio Test (LRT) giữa Model A và C:** $\chi^2 = 18.84$, $df = 33$, $p = 0.9771$
+- **Likelihood-Ratio Test (LRT) giữa Model A và C:** $\chi^2 = 18.84$, $df = 19$ (phần semantic hiệu dụng sau khi trừ 12 biến hành vi), $p = 0.4671$
 - **Script tạo:** `scratch/check_stats.py` (tính từ model log-likelihoods).
 
 ## 5. Olist — Cohort & kết quả
