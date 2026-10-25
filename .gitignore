@@ -71,3 +71,44 @@ archive_legacy/data/
 experiments/DSIT_Introduction.md
 experiments/DSIT_Methodology.md
 experiments/DSIT_Manuscript_Draft.md
+
+
+# ── Scratch & Temporary Audit Files ───────────────────────────────────
+scratch/
+/forest_plot.pdf
+!images/forest_plot.pdf
+!figures/forest_plot.pdf
+
+# ── Study 1, 2, 3, 4 & Subsequent Exploratory Work (Excluded from Publication Repo) ──
+src/study1/
+src/study3/
+src/study4/
+src/causal/
+src/common/
+config/study*.yaml
+scripts/*study*
+scripts/build_gold_adjudication.py
+scripts/compute_capacity_and_power_grid.py
+scripts/evaluate_iaa.py
+scripts/evaluate_qwen_vs_gold.py
+scripts/measure_extraction_speed.py
+scripts/prepare_iaa_300_reviews.py
+scripts/probe_gemini_quota.py
+scripts/run_batch_validation.py
+scripts/run_cross_model_consensus.py
+scripts/step0_audit.py
+scripts/test_gemini_connection.py
+tests/test_study*
+tests/test_evi.py
+tests/test_landmark.py
+tests/test_learners.py
+tests/test_monte_carlo.py
+tests/test_policies.py
+tests/test_qini.py
+tests/test_quantile_table.py
+data/annotation_iaa/
+docs/decisions.md
+docs/decision_rule_llm.md
+
+# Allow specific model note in outputs
+!outputs/amazon_v5_rebuild/gate10_baseline/README_MODELS.md

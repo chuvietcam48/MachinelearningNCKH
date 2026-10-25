@@ -225,3 +225,10 @@ python src/pipeline/12_extended_metrics.py
 # A5: Generate Evaluation Protocol Manifest (Exports all cohort metrics to JSON)
 python src/pipeline/13_eval_protocol.py
 ```
+
+### 7. Cohort Construction Alignment (Anchored Episode Window)
+* **Episode Clustering Logic (`src/study4/cohort_builder.py`)**: Synchronized to the exact anchored window rule used in the published snapshot dataset (`verified_episode_snapshots_h270_v1.parquet`). Reviews by the same customer occurring within 14 days of the episode's initial review date ($t - t_{\text{start}} \le 14\text{ days}$) are aggregated into a single engagement episode, capping `episode_duration` at 14.0 days by construction.
+
+### 8. Artifact Audit & Model Serialization Notice
+* **Gate 10 Baseline Artifacts (`outputs/amazon_v5_rebuild/gate10_baseline/`)**: Explanatory note added (`README_MODELS.md`) clarifying that legacy serialized `.pkl` files reflect exploratory ElasticNet (`CoxnetSurvivalAnalysis`) checkpoints, whereas all official reported tables and ablation tests utilize `lifelines.CoxPHFitter` with pre-registered small ridge penalties ($\lambda = 0.001$).
+

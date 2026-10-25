@@ -72,7 +72,7 @@ def load_and_clean(filepath: str) -> pd.DataFrame:
         raise ValueError(f"Missing required columns: {missing}")
 
     # ── Step 1: Parse InvoiceDate ────────────────────────────────────────────
-    df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], infer_datetime_format=True)
+    df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"])
 
     # ── Step 2: Drop null CustomerID (guest checkouts) ───────────────────────
     n_before = len(df)
