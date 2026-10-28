@@ -3,8 +3,13 @@
 Ablation Bootstrap Analysis for Study 4 (Amazon DSIT Re-engagement):
 - Evaluates the 6 disjoint descriptor groups forming exactly 33 semantic features.
 - Model A: 12 baseline behavioral features.
-- Resampling: 500 customer-level bootstrap iterations (B=500, seed=42).
-- Concordance index: Evaluated with Uno IPCW (and Harrell's C-index).
+- Resampling: 500 row-level (episode) bootstrap iterations (B=500, seed=42).
+- Concordance index: Uno IPCW (tau = 90th percentile of train durations).
+  NOTE: on this test split every customer contributes exactly one episode and
+  all censoring is administrative at 270 d (= tau), so row-level resampling is
+  equivalent to customer-level resampling and Uno IPCW C equals Harrell C.
+  The paper-procedure implementation (Harrell + customer cluster bootstrap,
+  results written to file) is scripts/ablation_harrell_cluster_bootstrap.py.
 - Equivalence margin: [-0.03, +0.03].
 """
 

@@ -112,3 +112,10 @@ docs/decision_rule_llm.md
 
 # Allow specific model note in outputs
 !outputs/amazon_v5_rebuild/gate10_baseline/README_MODELS.md
+
+# Published LLM annotation file (labels only, no review text) - referenced in .zenodo.json
+!data/artifacts/
+data/artifacts/*
+!data/artifacts/semantic_labels/
+data/artifacts/semantic_labels/*
+!data/artifacts/semantic_labels/mass_results_v224_qa.jsonl

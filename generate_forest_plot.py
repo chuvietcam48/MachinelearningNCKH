@@ -1,6 +1,28 @@
+import json
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+
+RESULTS = 'results/ablation_33_groups.json'  # produced by scripts/ablation_harrell_cluster_bootstrap.py
+DAGGER = {'Temporal/streak', 'Dispersion', 'Conflict'}  # sparse groups marked with a dagger in Table IV
+
+
+def load_items(path=RESULTS):
+    """Rows ordered bottom->top: dAUC row, then dC groups ascending by point estimate, full block on top."""
+    with open(path, 'r', encoding='utf-8') as f:
+        res = json.load(f)
+    a = res['full_block_auc270']
+    items = [(f"Full semantic block ({a['n_vars']}), \u0394AUC 270 d",
+              a['delta_auc'], a['ci_lower'], a['ci_upper'], a['margin'], True, False)]
+    rows = {r['group']: r for r in res['groups']}
+    full = rows.pop('Full semantic block')
+    for r in sorted(rows.values(), key=lambda r: r['delta_c']):
+        lab = f"{r['group']} ({r['n_vars']})" + ('\u2020' if r['group'] in DAGGER else '')
+        items.append((lab, r['delta_c'], r['ci_lower'], r['ci_upper'], res['procedure']['margin'],
+                      False, not r['within_margin']))
+    items.append((f"Full semantic block ({full['n_vars']}), \u0394C", full['delta_c'], full['ci_lower'],
+                  full['ci_upper'], res['procedure']['margin'], False, not full['within_margin']))
+    return items
 
 def generate_publication_forest_plot():
     # Set publication styling
@@ -16,21 +38,9 @@ def generate_publication_forest_plot():
     fig_height = 4.1        # in
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-    # Data specified by user (sorted by point estimate ΔC descending from top to bottom)
-    # Order in list: bottom row (y=0) to top row (y=7.4)
+    # Rows read from the results file (sorted by point estimate within the dC block).
     # Fields: (label, mean, lower, upper, margin, is_auc, exceeds_margin)
-    items = [
-        # Bottom row: ΔAUC (margin ±0.04)
-        ("Full semantic block (33, 270-day AUC)", -0.004, -0.036, 0.028, 0.04, True, False),
-        # ΔC rows (margin ±0.03), ordered by ΔC from lowest to highest so highest is at top
-        ("Conflict (3)†",                         -0.011, -0.035, 0.003, 0.03, False, True),  # Exceeds -0.03
-        ("Dispersion (1)†",                       -0.007, -0.021, 0.003, 0.03, False, False),
-        ("Dominance/concentration (1)",            0.000, -0.014, 0.014, 0.03, False, False),
-        ("Temporal/streak (8)†",                   0.003,  0.000, 0.006, 0.03, False, False),
-        ("Aspect-specific counts (16)",            0.004, -0.014, 0.021, 0.03, False, False),
-        ("Sentiment (4)",                          0.010, -0.002, 0.025, 0.03, False, False),
-        ("Full semantic block (33), ΔC",           0.004, -0.021, 0.028, 0.03, False, False),
-    ]
+    items = load_items()
 
     # Assign y-positions with a clear gap separating ΔC and ΔAUC
     y_positions = [0.0, 1.4, 2.4, 3.4, 4.4, 5.4, 6.4, 7.4]

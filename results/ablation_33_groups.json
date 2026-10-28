@@ -1,0 +1,129 @@
+{
+  "procedure": {
+    "metric": "Harrell C (sksurv.concordance_index_censored)",
+    "bootstrap": "customer-level cluster bootstrap on test split (reviewerID)",
+    "B": 500,
+    "seed": 42,
+    "margin": 0.03,
+    "n_test_episodes": 159,
+    "n_test_customers": 159,
+    "n_test_events": 73,
+    "C_model_A_harrell": 0.7539905575539568
+  },
+  "groups": [
+    {
+      "group": "Full semantic block",
+      "n_vars": 33,
+      "delta_c": 0.003597122302158251,
+      "ci_lower": -0.02158707094285224,
+      "ci_upper": 0.0281906047509476,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": 0.003597122302158251,
+        "ci_lower": -0.02158707094285224,
+        "ci_upper": 0.0281906047509476,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Sentiment",
+      "n_vars": 4,
+      "delta_c": 0.010229316546762623,
+      "ci_lower": -0.00172662783800194,
+      "ci_upper": 0.024769917701954275,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": 0.010229316546762623,
+        "ci_lower": -0.00172662783800194,
+        "ci_upper": 0.024769917701954275,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Aspect-specific counts",
+      "n_vars": 16,
+      "delta_c": 0.004271582733813006,
+      "ci_lower": -0.014391775500645151,
+      "ci_upper": 0.02134710256508141,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": 0.004271582733813006,
+        "ci_lower": -0.014391775500645151,
+        "ci_upper": 0.02134710256508141,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Temporal/streak",
+      "n_vars": 8,
+      "delta_c": 0.003259892086330929,
+      "ci_lower": 0.00043569510768262117,
+      "ci_upper": 0.006351326865444258,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": 0.003259892086330929,
+        "ci_lower": 0.00043569510768262117,
+        "ci_upper": 0.006351326865444258,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Dominance/concentration",
+      "n_vars": 1,
+      "delta_c": -0.00044964028776972587,
+      "ci_lower": -0.014378674616501405,
+      "ci_upper": 0.014154207136401541,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": -0.00044964028776972587,
+        "ci_lower": -0.014378674616501405,
+        "ci_upper": 0.014154207136401541,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Dispersion",
+      "n_vars": 1,
+      "delta_c": -0.0074190647482014205,
+      "ci_lower": -0.020808108355197804,
+      "ci_upper": 0.0029263857520975298,
+      "within_margin": true,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": -0.0074190647482014205,
+        "ci_lower": -0.020808108355197804,
+        "ci_upper": 0.0029263857520975298,
+        "n_boot_ok": 500
+      }
+    },
+    {
+      "group": "Conflict",
+      "n_vars": 3,
+      "delta_c": -0.011016187050359671,
+      "ci_lower": -0.03518792406446467,
+      "ci_upper": 0.0026240375522382175,
+      "within_margin": false,
+      "n_boot_ok": 500,
+      "legacy_ipcw_row": {
+        "delta_c": -0.011016187050359671,
+        "ci_lower": -0.03518792406446467,
+        "ci_upper": 0.0026240375522382175,
+        "n_boot_ok": 500
+      }
+    }
+  ],
+  "full_block_auc270": {
+    "n_vars": 33,
+    "delta_auc": -0.004221089518954946,
+    "ci_lower": -0.03789850059398119,
+    "ci_upper": 0.024545058363251784,
+    "margin": 0.04,
+    "within_margin": true,
+    "n_boot_ok": 500
+  }
+}
