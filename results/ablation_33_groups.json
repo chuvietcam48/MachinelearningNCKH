@@ -119,9 +119,9 @@
   ],
   "full_block_auc270": {
     "n_vars": 33,
-    "delta_auc": -0.0042,
-    "ci_lower": -0.036,
-    "ci_upper": 0.028,
+    "delta_auc": -0.004221089518954946,
+    "ci_lower": -0.03616979655712061,
+    "ci_upper": 0.028108905909691628,
     "margin": 0.04,
     "within_margin": true,
     "n_boot_ok": 500

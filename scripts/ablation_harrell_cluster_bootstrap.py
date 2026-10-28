@@ -95,14 +95,15 @@ def main():
     uniq = np.unique(cust)
     rows_of = {c: np.where(cust == c)[0] for c in uniq}
     rng = np.random.RandomState(SEED)
-    # 270-day return label: all censoring in the test split is administrative at
-    # t* = 270 d, so label = E_Event with no exclusions. 1 - S(270) is monotone in
-    # the partial hazard, so AUC is computed on the partial hazard directly.
+    # 270-day return risk and AUC: exact reproduction of scratch/amazon_report.py
+    # (task-5032, 2026-09-08, logged in task-5032.log):
     assert (tm[~ev] == 270).all(), 'non-administrative censoring present'
     lab = (ev & (tm <= 270)).astype(int)
-    rC = risk['Full semantic block']
-    auc_point = roc_auc_score(lab, rC) - roc_auc_score(lab, risk_A)
-    boot_auc = []
+    S_A = cph_A.predict_survival_function(df_test[feats_A], times=[270]).iloc[0].values
+    S_C = models['Full semantic block'].predict_survival_function(df_test[feats_A + feats_Sem], times=[270]).iloc[0].values
+    P_A = 1.0 - S_A
+    P_C = 1.0 - S_C
+    auc_point = float(roc_auc_score(lab, P_C) - roc_auc_score(lab, P_A))
 
     boot = {g: [] for g in groups}
     for _ in range(N_BOOT):
@@ -111,7 +112,21 @@ def main():
         cA_b = harrell(ev[idx], tm[idx], risk_A[idx])
         for g in groups:
             boot[g].append(harrell(ev[idx], tm[idx], risk[g][idx]) - cA_b)
-        boot_auc.append(roc_auc_score(lab[idx], rC[idx]) - roc_auc_score(lab[idx], risk_A[idx]))
+
+    # In scratch/amazon_report.py, np.random.seed(42) ran a 500-iteration semantic-only
+    # bootstrap first, so the Model A vs C comparison ran on draws 501-1000.
+    rng_auc = np.random.RandomState(SEED)
+    for _ in range(500):
+        _ = rng_auc.choice(len(df_test), len(df_test), replace=True)
+
+    boot_auc = []
+    for _ in range(N_BOOT):
+        idx = rng_auc.choice(len(df_test), len(df_test), replace=True)
+        y_b = lab[idx]
+        if len(np.unique(y_b)) > 1:
+            a_A = roc_auc_score(y_b, P_A[idx])
+            a_C = roc_auc_score(y_b, P_C[idx])
+            boot_auc.append(a_C - a_A)
 
     # ---- Legacy procedure (ablation_ci.py): IPCW + row bootstrap ------------
     y_tr = np.array(list(zip(df_train['E_Event'].astype(bool), df_train['T_Duration'])),
