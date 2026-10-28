@@ -1,33 +1,62 @@
-# Universal Customer Churn Decision Framework
-### *Adaptive Survival Analysis & Semantic Extensions for E-Commerce*
+# Bounded Contribution of LLM-Derived Aspect Descriptors to Customer Re-Engagement Timing: An Equivalence Analysis
+### *DSIT 2026 Replication Package and Reference Implementation*
 
-Implementation of a **Universal Customer Churn Decision Framework** that predicts *when* customers will churn and computes the optimal intervention policy. The framework operates on standard behavioral signals by default but seamlessly integrates an optional **Semantic Extension** to process natural language feedback into predictive risk trajectories.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22847042.svg)](https://doi.org/10.5281/zenodo.22847042)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
----
-
-## 🚀 Overview
-This framework elevates traditional churn prediction by answering three questions: **When will this customer leave? Why are they leaving? What is the optimal retention intervention?**
-
-Key capabilities:
-- **Universal Architecture**: Agnostic dataset adapters compatible with diverse transactional formats (e.g., UCI, CDNOW, TaFeng, X5 Retail, Amazon).
-- **Behavioral & Survival Engine**: Vectorized RFM extraction and precision CoxPH/Weibull survival models.
-- **Optional Semantic Extension**: Extracts trajectory-aware semantic signals (e.g., aspect conflict, negative streak) when textual reviews are available.
-- **Adaptive Decision Support**: Generates expected-utility intervention policies dynamically routed by semantic risk attribution.
+This repository contains the official replication codebase and dataset artifacts for the paper:
+> **"Bounded Contribution of LLM-Derived Aspect Descriptors to Customer Re-Engagement Timing: An Equivalence Analysis"**  
+> *Published / Presented at DSIT 2026*.  
+> **Permanent Archival DOI:** [https://doi.org/10.5281/zenodo.22847042](https://doi.org/10.5281/zenodo.22847042)
 
 ---
 
-## 📜 Core Academic Contributions
-1. **Universal Customer Churn Decision Framework:** A dataset-agnostic churn decision support architecture that generalizes across varying data environments.
-2. **Behavior Module:** A robust baseline engine capturing recency, frequency, and monetary inter-purchase dynamics.
-3. **Optional Semantic Extension (Validated via Amazon Case Study):** A novel state-persistence semantic trajectory module that extracts granular aspect-aware dissatisfaction patterns rather than binary sentiment.
-4. **Adaptive Decision Support Engine:** A policy simulator that dynamically routes customers to tailored interventions (e.g., Logistics Recovery vs. Price Discount) depending on the presence of semantic attribution vectors.
-5. **Coverage-Aware Evaluation Protocol:** A rigorous multidimensional benchmarking suite proving that the framework achieves maximum information gain when semantic data is present, while gracefully degrading to robust behavioral performance otherwise.
+## 🎯 Reproducing the DSIT 2026 Paper
 
-### 🗺️ The Experimental Protocol
-The framework's theoretical contributions are empirically validated through a rigorous pipeline:
-- **Generalizability Test**: Evaluating the Behavioral Engine across four heterogeneous datasets (CDNOW, TaFeng, X5 Retail, UCI).
-- **Semantic Validation Case**: Evaluating the Optional Semantic Module on the Amazon Review dataset to compute Likelihood Ratio Tests (LRT) and bootstrapped C-index Information Gain.
-- **Sensitivity & Robustness**: Validating model stability across varying penalizers, intervention costs, and missing semantic coverage thresholds.
+All primary empirical results, two one-sided tests (TOST) for statistical equivalence, tables, and figures reported in the paper are reproducible directly from the scripts and artifacts in this repository:
+
+### 1. Published Datasets & LLM Aspect Annotations
+* **LLM Aspect Annotation File (`data/artifacts/semantic_labels/mass_results_v224_qa.jsonl`)**:
+  Contains all 2,067 successfully parsed records produced by the Gemini-based ABSA extraction pipeline (prompt version v2.2.4, taxonomy v2.2.4, `gemini-2.5-flash`). Each record contains the item ID, provider extraction targets, final aspect-polarity tuples, review mixed flags, and model metadata. All personal API key hashes and raw customer review texts have been sanitized.
+* **Episodic Snapshot Parquet (`data/artifacts/semantic_labels/verified_episode_snapshots_h270_v1.parquet`)**:
+  Base cohort dataset of customer review episodes constructed under the 14-day anchored observation window and 270-day follow-up horizon.
+
+### 2. Cohort Construction & Feature Engineering
+* **Raw Review Episode Grouping (`src/cohort/cohort_builder.py`)**:
+  Reference algorithm for clustering sequential customer reviews into engagement episodes using an anchored 14-day window ($t - t_{\text{start}} \le 14\text{ days}$).
+* **Dataset Construction & Feature Extraction (`src/pipeline/02_dataset_construction.py`)**:
+  Applies eligibility filters, extracts the 12 behavioral features (Model A), merges the 33 semantic aspect features (Model C), and partitions data chronologically into train / validation / test splits (768 / 164 / 159 episodes; 73 events in the test split).
+
+### 3. Empirical Equivalence Tests & Table IV (Group Ablation)
+* **Ablation Bootstrap Analysis (`scripts/ablation_harrell_cluster_bootstrap.py`)**:
+  Implements the exact procedure specified in the manuscript:
+  - Metric: Harrell Concordance Index (`sksurv.metrics.concordance_index_censored`).
+  - Resampling: Customer-level (reviewer ID) cluster bootstrap ($B = 500$ resamples, seed = 42).
+  - Models: Evaluates Model A vs. Model A + each of the 6 disjoint descriptor groups (33 total semantic variables), plus the full semantic block $\Delta C$ and $\Delta \text{AUC}_{270\text{d}}$.
+  - Output: Exports all point estimates and 95% bootstrap confidence intervals directly to `results/ablation_33_groups.json`.
+
+```bash
+# Run the Table IV group ablation equivalence test
+python scripts/ablation_harrell_cluster_bootstrap.py
+```
+
+### 4. Single-Panel Forest Plot (Figure 2)
+* **Plotting Script (`generate_forest_plot.py` / `scripts/generate_single_panel_forest_plot.py`)**:
+  Reads directly from `results/ablation_33_groups.json` and generates the publication-ready, single-panel forest plot showing $\Delta C$ equivalence bands ($\pm 0.03$), $\Delta \text{AUC}$ band ($\pm 0.04$), hollow marker for the out-of-margin Conflict group, and sparse-group dagger indicators.
+  - Outputs: `images/forest_plot.pdf` (used in LaTeX `main_short.tex`), `figures/forest_plot.pdf`, and `figures/forest_plot.png`.
+
+```bash
+# Generate Figure 2 from computed results
+python generate_forest_plot.py
+```
+
+---
+
+## 🚀 Overview of the Decision Framework
+This framework evaluates customer re-engagement timing and retention policy design under standard behavioral signals and optional semantic signals derived from natural language reviews:
+- **Survival Engine**: Vectorized behavioral extraction and precision CoxPH/Weibull survival models.
+- **Semantic Extension**: Extracts trajectory-aware semantic signals (aspect sentiment, conflict, streaks, dominance, dispersion) when textual reviews are available.
+- **Equivalence Analysis**: Establishes whether rich semantic descriptors offer meaningful discrimination gains over simple behavioral baselines under pre-registered equivalence margins ($\Delta C \in [-0.03, +0.03]$, $\Delta \text{AUC} \in [-0.04, +0.04]$).
 
 ---
 
@@ -40,7 +69,7 @@ The framework's theoretical contributions are empirically validated through a ri
 ### 2. Setup
 ```bash
 # Clone repository
-git clone https://github.com/HarperCut3/MachinelearningNCKH.git
+git clone https://github.com/chuvietcam48/MachinelearningNCKH.git
 cd MachinelearningNCKH
 
 # Create virtual environment (recommended)
@@ -49,45 +78,6 @@ python -m venv .venv
 
 # Install dependencies
 pip install -r requirements.txt
-
-# For development (Jupyter, pytest):
-pip install -r requirements-dev.txt
-```
-
-### 3. Data Setup
-1. Download **Online Retail.xlsx** from [UCI ML Repository](https://archive.ics.uci.edu/dataset/352/online+retail).
-2. Place it in `data/raw/Online Retail.xlsx`.
-
----
-
-## 🚦 Usage
-
-### Quick Start
-```bash
-# Run Universal Framework on standard behavioral dataset
-python run_framework.py --dataset cdnow
-
-# Run Universal Framework with Semantic Extension (Validation Case)
-python run_framework.py --dataset amazon --enable-semantic
-```
-
-### CLI Flags
-| Flag | Description |
-|---|---|
-| `--dataset` | Target dataset (`cdnow`, `amazon`, `tafeng`, `x5retail`, `uci`) |
-| `--enable-semantic` | Activate optional Semantic Extension Module |
-
-### Launch Dashboard
-Start the interactive Streamlit app:
-```bash
-streamlit run app.py
-# Access at http://localhost:8501
-```
-
-### Generate Comparison Report
-Compare results across all dataset runs:
-```bash
-python src/comparison.py
 ```
 
 ---
@@ -96,139 +86,57 @@ python src/comparison.py
 
 ```
 MachinelearningNCKH/
-├── config/
-│   └── simulation_params.yaml     # Business parameters (hazard threshold, costs, etc.)
 ├── data/
-│   ├── raw/                       # Raw datasets (gitignored — download separately)
-│   └── processed/                 # Feature cache (gitignored — auto-generated)
+│   └── artifacts/
+│       └── semantic_labels/
+│           ├── mass_results_v224_qa.jsonl                 # Published LLM ABSA annotations (2,067 records)
+│           └── verified_episode_snapshots_h270_v1.parquet # Episode snapshot cohort
 ├── src/
-│   ├── data_loader.py             # UCI Online Retail loader
-│   ├── data_loader_tafeng.py      # Ta Feng Grocery loader
-│   ├── data_loader_cdnow.py       # CDNOW loader
-│   ├── feature_engine.py          # Vectorized RFM + survival features
-│   ├── models.py                  # Weibull AFT, CoxPH, Logistic, RFM
-│   ├── policy.py                  # EVI Decision Engine
-│   ├── simulator.py               # Monte Carlo Simulation
-│   ├── evaluation.py              # C-index, IBS, AUC, business metrics
-│   ├── uplift.py                  # Uplift Modeling (T-Learner)
-│   ├── comparison.py              # Cross-run comparison report
-│   └── visualization.py           # Publication-ready plots
-├── tests/
-│   └── test_components.py         # Unit tests for core modules
-├── outputs/                       # All pipeline outputs (gitignored)
-│   └── {DATASET}_tau{N}/          # Isolated per-run output directory
-│       ├── figures/               # Generated plots
-│       ├── reports/               # intervention_decisions.csv
-│       ├── models/                # Serialized .pkl artifacts
-│       └── logs/                  # Timestamped pipeline logs
-├── notebooks/                     # Jupyter exploration (gitignored)
-├── app.py                         # Streamlit Dashboard
-├── main.py                        # Pipeline Orchestrator
-├── Dockerfile                     # Container definition
-├── docker-compose.yml             # Dashboard + MLflow services
-├── requirements.txt               # Production dependencies
-├── requirements-dev.txt           # Dev/notebook dependencies
-└── README.md
+│   ├── cohort/
+│   │   └── cohort_builder.py                              # Anchored episode clustering reference script
+│   ├── pipeline/
+│   │   ├── 02_dataset_construction.py                     # Episodic dataset construction & splitting
+│   │   └── 03_survival_model.py                           # Baseline survival modeling
+│   └── framework/
+│       ├── behavior_engine.py                             # Behavioral feature extraction
+│       └── survival_engine.py                             # CoxPH wrapper with penalizer=0.001
+├── scripts/
+│   ├── ablation_harrell_cluster_bootstrap.py              # Harrell C + customer-cluster bootstrap (Table IV)
+│   ├── reproduce_ablation_33.py                           # Standalone 33-feature partition ablation verification
+│   └── generate_single_panel_forest_plot.py               # Mirror of publication forest plot generator
+├── results/
+│   └── ablation_33_groups.json                            # Computed bootstrap results for Table IV and Fig. 2
+├── images/
+│   └── forest_plot.pdf                                    # Single-panel Figure 2 included by LaTeX
+├── figures/
+│   ├── forest_plot.pdf                                    # High-resolution vector plot
+│   └── forest_plot.png                                    # 300 DPI preview image
+├── generate_forest_plot.py                                # Figure 2 generator script
+├── .zenodo.json                                           # Zenodo archival deposit metadata
+├── README.md
+└── requirements.txt
 ```
 
 ---
 
-## ⚙️ Configuration
-Adjust business parameters in `config/simulation_params.yaml`:
+## 📊 Key Results (Amazon Case Study Summary)
 
-```yaml
-policy:
-  hazard_threshold: 0.01    # Daily hazard trigger
-  cost_per_contact: 1.0     # Cost per intervention (£)
-  response_rate: 0.15       # Expected campaign success rate
-```
-
----
-
-## 📊 Key Results
-
-### UCI Online Retail (n=4,338)
-| Metric | Score | Target |
-|---|---|---|
-| **Weibull C-index (OOS)** | **0.829** | > 0.60 ✅ |
-| **IBS Score** | **0.162** | < 0.25 ✅ |
-
-### CDNOW (n=23,502)
-| Metric | Score | Target |
-|---|---|---|
-| **Weibull C-index (OOS)** | **0.773** | > 0.60 ✅ |
-| **IBS Score** | **0.077** | < 0.25 ✅ |
-| **CV Mean C-index** | **0.746** | > 0.60 ✅ |
-
-> **Monte Carlo Simulation**: The Weibull policy achieves significantly higher revenue precision per contact compared to standard RFM targeting, while reducing outreach costs by ~77%.
+* **Cohort Partitioning:** 1,091 total episodes chronologically partitioned into 768 training, 164 validation, and 159 test episodes (**73 true re-engagement events** in the test split).
+* **Model Discrimination:**
+  * Model A (Behavioral, 12 features): Harrell $C = 0.7540$ (95% CI $[0.693, 0.816]$), $\text{AUC}_{270\text{d}} = 0.7848$ (95% CI $[0.706, 0.858]$).
+  * Model C (Behavioral + Semantic, 45 features): Harrell $C = 0.7576$ (95% CI $[0.697, 0.821]$), $\text{AUC}_{270\text{d}} = 0.7806$ (95% CI $[0.706, 0.852]$).
+* **Paired Incremental Gains:**
+  * $\Delta C = +0.0036$ (95% CI $[-0.0216, +0.0282]$, rounds to $[-0.022, +0.028]$). Falls entirely within the equivalence margin $[-0.03, +0.03]$.
+  * $\Delta \text{AUC} = -0.0042$ (95% CI $[-0.0362, +0.0281]$, rounds to $[-0.036, +0.028]$). Falls entirely within the equivalence margin $[-0.04, +0.04]$.
+* **Descriptor Group Ablation (Table IV):**
+  Five of six groups fall strictly inside the $\pm 0.03$ margin. Only the sparse Conflict group (3 features) exceeds the margin ($[-0.035, +0.003]$), driven by extreme sparsity rather than predictive utility.
 
 ---
 
-## 🐳 Docker Deployment
+## 📝 Reference Notes
 
-**Run everything (Dashboard + MLflow):**
-```bash
-docker compose up --build
-```
-- Dashboard: http://localhost:8501
-- MLflow UI: http://localhost:5000
+### 1. Cohort Construction Alignment (Anchored Episode Window)
+* **Episode Clustering Logic (`src/cohort/cohort_builder.py`)**: Synchronized to the exact anchored window rule used in the published snapshot dataset (`verified_episode_snapshots_h270_v1.parquet`). Reviews by the same customer occurring within 14 days of the episode's initial review date ($t - t_{\text{start}} \le 14\text{ days}$) are aggregated into a single engagement episode, capping `episode_duration` at 14.0 days by construction.
 
----
-
-## 📝 Citation
-*D. Chen et al., "Data mining for the online retail industry: A case study of RFM model-based customer segmentation", 2012.*
-
----
-
-## 🚀 Recent Updates (Empirical Hardening for Paper Submission)
-
-We have added several isolated, add-only scripts to mathematically harden the framework for conference submission (DSIT). **The core pipeline logic remains untouched**; these scripts purely generate rigorous supplementary artifacts.
-
-### 1. Robust Standard Errors & Survival Updates
-* **src/pipeline/03_survival_model.py**: Updated CoxPH to use Cluster-Robust Standard Errors (
-obust=True) by CustomerID, correcting for episode dependence. 
-* **src/pipeline/09_se_comparison.py**: Calculates the precise difference between Classical and Robust Standard errors. Outputs: se_comparison.csv.
-
-### 2. Statistical Validation & Ablation Scripts
-* **src/pipeline/06_cohort_analysis.py**: Validates selection bias and censoring rates between the broad population and the exact semantic cohort. Outputs: cohort_analysis.csv.
-* **src/pipeline/07_semantic_ablation.py**: Calculates incremental C-index gain per semantic feature block (Mean -> Variance -> Entropy). Outputs: semantic_ablation.csv.
-* **Customer-Level Bootstrap**: Conducted 100 resamples by CustomerID to validate Hazard Ratios (e.g., proving dominance_ratio HR is stable at ~8.27). Outputs: outputs/pipeline_freeze/results/bootstrap_hazard_ratios.csv.
-* **Feature Distributions**: Summary statistics for semantic variables to prove they are not driven by single outliers. Outputs: outputs/pipeline_freeze/results/feature_distribution_semantic.csv.
-
-### 3. Policy Baselines & LLM Provenance
-* **Policy Baseline Comparison**: Extracted precise Net ROI comparisons between ICSF Semantic, Behavior-Only, and Random Targeting. Outputs: outputs/pipeline_freeze/results/policy/baseline_comparison.csv.
-* **LLM Provenance**: Documented the exact Gemini 1.5 Pro prompt and JSON Schema to ensure full transparency and avoid 'black-box' criticisms. Available at: outputs/pipeline_freeze/results/llm_provenance.md.
-
-### 4. Publication Figures
-* **experiments/generate_publication_figures.py**: Generates publication-ready visuals.
-  * ig2_km_dominance_ratio.png: Kaplan-Meier plot stratifying by Semantic Dominance.
-  * ig3_dss_profit_curve.png: Decision Support System Cumulative Profit (labeled correctly as ICSF DSS).
-
-### 5. Final Reproducibility & Out-Of-Sample Integrity Guarantee
-* **Dataset Splitting**: The framework uses a strict temporal holdout split (70-15-15) based on episode_start.
-* **Zero Leakage**: Standardizers and feature variance/collinearity filters are strictly it on the 70% training set and merely 	ransformed on the test set. 
-* **Customer Overlap**: We calculated the customer intersection between the training set and the out-of-sample test set. Only **3 customers** (1.41% of the test cohort) overlap, proving that the model achieves its high C-index by generalizing to new customers, not by memorizing the behavior of known customers.
-
-### 6. Final DSIT Rebuttal Scripts (August 2026)
-To address the final reviewer comments regarding episodic framing, target leakage, and metric robustness, we added a suite of standalone verification scripts. You can run them directly:
-
-```bash
-# A1: Run the strict Retrospective Classification Baseline (snapshot t_0 = 70th percentile)
-python src/pipeline/10_retrospective_baseline.py
-
-# A2: Run the Multi-Dataset Generality Benchmark (Strict OOS for CDNOW, TaFeng, UCI)
-python src/pipeline/11_benchmark_generality.py
-
-# A4: Run Extended Statistical Metrics (PH Tests, Uno's C, IBS, Customer-level Bootstrap HR)
-python src/pipeline/12_extended_metrics.py
-
-# A5: Generate Evaluation Protocol Manifest (Exports all cohort metrics to JSON)
-python src/pipeline/13_eval_protocol.py
-```
-
-### 7. Cohort Construction Alignment (Anchored Episode Window)
-* **Episode Clustering Logic (`src/study4/cohort_builder.py`)**: Synchronized to the exact anchored window rule used in the published snapshot dataset (`verified_episode_snapshots_h270_v1.parquet`). Reviews by the same customer occurring within 14 days of the episode's initial review date ($t - t_{\text{start}} \le 14\text{ days}$) are aggregated into a single engagement episode, capping `episode_duration` at 14.0 days by construction.
-
-### 8. Artifact Audit & Model Serialization Notice
+### 2. Artifact Audit & Model Serialization Notice
 * **Gate 10 Baseline Artifacts (`outputs/amazon_v5_rebuild/gate10_baseline/`)**: Explanatory note added (`README_MODELS.md`) clarifying that legacy serialized `.pkl` files reflect exploratory ElasticNet (`CoxnetSurvivalAnalysis`) checkpoints, whereas all official reported tables and ablation tests utilize `lifelines.CoxPHFitter` with pre-registered small ridge penalties ($\lambda = 0.001$).
-
